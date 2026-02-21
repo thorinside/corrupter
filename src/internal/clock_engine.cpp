@@ -26,6 +26,28 @@ void ClockEngine::Reset(float sample_rate_hz, float time_01) {
   external_signal_present_ = false;
 }
 
+void ClockEngine::SetSampleRate(float sample_rate_hz, uint64_t current_sample_index) {
+  const float new_sr = std::max(1.0f, sample_rate_hz);
+  const float old_sr = std::max(1.0f, sample_rate_hz_);
+  const float ratio = new_sr / old_sr;
+  sample_rate_hz_ = new_sr;
+
+  external_period_samples_ = std::max(1.0f, external_period_samples_ * ratio);
+  active_period_samples_ = std::max(1.0f, active_period_samples_ * ratio);
+
+  if (next_tick_sample_ > current_sample_index) {
+    const uint64_t remaining = next_tick_sample_ - current_sample_index;
+    const uint64_t scaled = static_cast<uint64_t>(std::max(1.0, static_cast<double>(remaining) * ratio));
+    next_tick_sample_ = current_sample_index + scaled;
+  } else {
+    next_tick_sample_ = current_sample_index;
+  }
+
+  if (internal_mode_) {
+    active_period_samples_ = ComputeInternalPeriodSamples();
+  }
+}
+
 void ClockEngine::SetInternalMode(bool internal_mode) {
   internal_mode_ = internal_mode;
 }

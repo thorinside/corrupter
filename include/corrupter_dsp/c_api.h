@@ -10,6 +10,7 @@ extern "C" {
 
 typedef struct {
   float sample_rate_hz;
+  float max_supported_sample_rate_hz;
   uint32_t max_block_frames;
   float max_buffer_seconds;
   uint32_t random_seed;
@@ -81,6 +82,8 @@ int corrupter_engine_serialise_persistent_state(void* engine_memory, void* out,
                                                 size_t out_bytes, size_t* written);
 int corrupter_engine_deserialise_persistent_state(void* engine_memory, const void* data,
                                                   size_t data_bytes);
+void corrupter_engine_set_audio_context(void* engine_memory, float sample_rate_hz,
+                                        uint32_t max_block_frames);
 void corrupter_engine_set_clock_mode_internal(void* engine_memory, int internal);
 void corrupter_engine_process(void* engine_memory, const corrupter_audio_block_t* audio,
                               const corrupter_cv_inputs_t* cv,

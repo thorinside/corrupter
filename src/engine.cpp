@@ -94,6 +94,21 @@ struct PersistentBlobV1 {
 constexpr uint32_t kPersistentMagic = 0x50525243u;  // 'CRRP'
 constexpr uint16_t kPersistentVersion = 1u;
 
+float EffectiveInitialSampleRate(const EngineConfig& cfg) {
+  return (cfg.sample_rate_hz > 0.0f) ? cfg.sample_rate_hz : 96000.0f;
+}
+
+float EffectiveMaxSampleRate(const EngineConfig& cfg) {
+  const float init_sr = EffectiveInitialSampleRate(cfg);
+  const float max_sr =
+      (cfg.max_supported_sample_rate_hz > 0.0f) ? cfg.max_supported_sample_rate_hz : init_sr;
+  return std::max(init_sr, max_sr);
+}
+
+uint32_t EffectiveMaxBlockFrames(const EngineConfig& cfg) {
+  return std::max(1u, cfg.max_block_frames);
+}
+
 }  // namespace
 
 struct Engine::Impl {
@@ -117,6 +132,8 @@ struct Engine::Impl {
   uint64_t observed_ticks = 0;
   float current_rate_l = 1.0f;
   float current_rate_r = 1.0f;
+  float runtime_sample_rate_hz = 96000.0f;
+  uint32_t runtime_max_block_frames = 256;
   float* buffer_l = nullptr;
   float* buffer_r = nullptr;
 
@@ -260,12 +277,13 @@ Engine::~Engine() noexcept {
 }
 
 size_t Engine::required_dram_bytes(const EngineConfig& cfg) noexcept {
-  if (cfg.sample_rate_hz <= 0.0f || cfg.max_buffer_seconds <= 0.0f) {
+  if (cfg.max_buffer_seconds <= 0.0f) {
     return 0;
   }
 
+  const float max_sample_rate_hz = EffectiveMaxSampleRate(cfg);
   const double frames_f64 =
-      static_cast<double>(cfg.sample_rate_hz) * static_cast<double>(cfg.max_buffer_seconds);
+      static_cast<double>(max_sample_rate_hz) * static_cast<double>(cfg.max_buffer_seconds);
   const size_t frames = static_cast<size_t>(std::ceil(frames_f64));
   const size_t audio_bytes = frames * 2u * sizeof(float);
   const size_t state_bytes = sizeof(Impl);
@@ -287,9 +305,14 @@ bool Engine::initialise(void* dram, size_t dram_bytes, const EngineConfig& cfg) 
   impl_ = raw_impl;
 
   impl_->cfg = cfg;
+  impl_->cfg.sample_rate_hz = EffectiveInitialSampleRate(cfg);
+  impl_->cfg.max_supported_sample_rate_hz = EffectiveMaxSampleRate(cfg);
+  impl_->cfg.max_block_frames = EffectiveMaxBlockFrames(cfg);
   impl_->buffer_frames = static_cast<uint32_t>(
-      std::max(1.0, std::ceil(static_cast<double>(cfg.sample_rate_hz) *
+      std::max(1.0, std::ceil(static_cast<double>(impl_->cfg.max_supported_sample_rate_hz) *
                               static_cast<double>(cfg.max_buffer_seconds))));
+  impl_->runtime_sample_rate_hz = impl_->cfg.sample_rate_hz;
+  impl_->runtime_max_block_frames = impl_->cfg.max_block_frames;
 
   uint8_t* audio_start = reinterpret_cast<uint8_t*>(aligned_impl + sizeof(Impl));
   const uintptr_t aligned_audio =
@@ -303,7 +326,7 @@ bool Engine::initialise(void* dram, size_t dram_bytes, const EngineConfig& cfg) 
   std::memset(impl_->buffer_r, 0, impl_->buffer_frames * sizeof(float));
 
   impl_->rng.Seed(cfg.random_seed);
-  impl_->clock.Reset(cfg.sample_rate_hz, impl_->knobs.time_01);
+  impl_->clock.Reset(impl_->runtime_sample_rate_hz, impl_->knobs.time_01);
   impl_->ResetPlayback();
   reset();
   return true;
@@ -322,7 +345,9 @@ void Engine::reset() noexcept {
   impl_->prev_gate = {};
   impl_->pending_freeze_toggle = false;
   impl_->corrupt_enabled = false;
-  impl_->clock.Reset(impl_->cfg.sample_rate_hz, impl_->knobs.time_01);
+  impl_->runtime_sample_rate_hz = impl_->cfg.sample_rate_hz;
+  impl_->runtime_max_block_frames = impl_->cfg.max_block_frames;
+  impl_->clock.Reset(impl_->runtime_sample_rate_hz, impl_->knobs.time_01);
   impl_->ResetPlayback();
 
   if (impl_->buffer_l && impl_->buffer_r && impl_->buffer_frames > 0u) {
@@ -348,6 +373,25 @@ void Engine::set_knobs(const KnobState& knobs) noexcept {
   impl_->knobs.corrupt_cv_attn_01 = internal::Clamp01(impl_->knobs.corrupt_cv_attn_01);
 
   impl_->clock.SetTime(impl_->knobs.time_01);
+}
+
+void Engine::set_audio_context(float sample_rate_hz, uint32_t max_block_frames) noexcept {
+  if (!impl_) {
+    return;
+  }
+
+  const float max_sr = EffectiveMaxSampleRate(impl_->cfg);
+  const float requested_sr =
+      (sample_rate_hz > 0.0f) ? sample_rate_hz : impl_->runtime_sample_rate_hz;
+  const float clamped_sr = internal::Clamp(requested_sr, 1.0f, max_sr);
+  if (std::fabs(clamped_sr - impl_->runtime_sample_rate_hz) > 1e-6f) {
+    impl_->runtime_sample_rate_hz = clamped_sr;
+    impl_->clock.SetSampleRate(clamped_sr, impl_->processed_frames);
+  }
+
+  if (max_block_frames > 0u) {
+    impl_->runtime_max_block_frames = max_block_frames;
+  }
 }
 
 void Engine::set_persistent_state(const PersistentState& state) noexcept {
@@ -439,6 +483,8 @@ bool Engine::get_runtime_info(RuntimeInfo* out) const noexcept {
   out->external_clock_present = impl_->clock.ExternalSignalPresent();
   out->current_rate_l = impl_->current_rate_l;
   out->current_rate_r = impl_->current_rate_r;
+  out->sample_rate_hz = impl_->runtime_sample_rate_hz;
+  out->max_block_frames = impl_->runtime_max_block_frames;
   return true;
 }
 
@@ -446,6 +492,10 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
                      const GateInputs& gates) noexcept {
   if (!impl_ || !audio.out_l || !audio.out_r || audio.frames == 0u) {
     return;
+  }
+
+  if (audio.frames > impl_->runtime_max_block_frames) {
+    impl_->runtime_max_block_frames = audio.frames;
   }
 
   for (uint32_t i = 0; i < audio.frames; ++i) {
@@ -579,7 +629,7 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
           CvOrZero(cv.corrupt_v, i) != 0.0f) {
         wet = internal::ProcessCorruptSample(
             wet, corrupt_eff, impl_->state.corrupt_bank, impl_->state.corrupt_algorithm,
-            &pcs.corrupt, &impl_->rng, impl_->cfg.sample_rate_hz);
+            &pcs.corrupt, &impl_->rng, impl_->runtime_sample_rate_hz);
       }
 
       pcs.phase += smooth_rate;

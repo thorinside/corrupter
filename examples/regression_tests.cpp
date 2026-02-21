@@ -109,6 +109,7 @@ StereoBuffers RunScenarioCpp(const Scenario& s, const ModulationBuffers* mod = n
   engine.set_persistent_state(s.state);
   engine.set_knobs(s.knobs);
   engine.set_clock_mode_internal(s.clock_mode_internal);
+  engine.set_audio_context(s.cfg.sample_rate_hz, s.cfg.max_block_frames);
 
   corrupter::AudioBlock audio;
   audio.in_l = buf.in_l.data();
@@ -162,6 +163,7 @@ StereoBuffers RunScenarioCppChunked(const Scenario& s, const ModulationBuffers* 
   engine.set_persistent_state(s.state);
   engine.set_knobs(s.knobs);
   engine.set_clock_mode_internal(s.clock_mode_internal);
+  engine.set_audio_context(s.cfg.sample_rate_hz, s.cfg.max_block_frames);
 
   uint32_t offset = 0;
   size_t pattern_i = 0;
@@ -213,6 +215,7 @@ corrupter::RuntimeInfo RunScenarioCppForInfo(const Scenario& s, const Modulation
   engine.set_persistent_state(s.state);
   engine.set_knobs(s.knobs);
   engine.set_clock_mode_internal(s.clock_mode_internal);
+  engine.set_audio_context(s.cfg.sample_rate_hz, s.cfg.max_block_frames);
 
   corrupter::AudioBlock audio;
   audio.in_l = buf.in_l.data();
@@ -259,6 +262,7 @@ StereoBuffers RunScenarioC(const Scenario& s, const ModulationBuffers* mod = nul
 
   corrupter_engine_config_t cfg{};
   cfg.sample_rate_hz = s.cfg.sample_rate_hz;
+  cfg.max_supported_sample_rate_hz = s.cfg.max_supported_sample_rate_hz;
   cfg.max_block_frames = s.cfg.max_block_frames;
   cfg.max_buffer_seconds = s.cfg.max_buffer_seconds;
   cfg.random_seed = s.cfg.random_seed;
@@ -297,6 +301,8 @@ StereoBuffers RunScenarioC(const Scenario& s, const ModulationBuffers* mod = nul
   knobs.corrupt_cv_attn_01 = s.knobs.corrupt_cv_attn_01;
   corrupter_engine_set_knobs(engine_mem.data(), &knobs);
   corrupter_engine_set_clock_mode_internal(engine_mem.data(), s.clock_mode_internal ? 1 : 0);
+  corrupter_engine_set_audio_context(engine_mem.data(), s.cfg.sample_rate_hz,
+                                     s.cfg.max_block_frames);
 
   corrupter_audio_block_t audio{};
   audio.in_l = buf.in_l.data();
@@ -900,6 +906,68 @@ bool TestFreezeLatchingSyncToClock() {
   return diverged;
 }
 
+bool TestRuntimeAudioContextSwitch() {
+  corrupter::EngineConfig cfg;
+  cfg.sample_rate_hz = 32000.0f;
+  cfg.max_supported_sample_rate_hz = 96000.0f;
+  cfg.max_block_frames = 512;
+  cfg.max_buffer_seconds = 5.0f;
+  cfg.random_seed = 2026;
+
+  const size_t dram_bytes = corrupter::Engine::required_dram_bytes(cfg);
+  std::vector<uint8_t> dram(dram_bytes);
+  corrupter::Engine engine;
+  if (!engine.initialise(dram.data(), dram.size(), cfg)) {
+    return false;
+  }
+
+  engine.set_audio_context(32000.0f, 96);
+
+  const uint32_t n1 = 64;
+  std::vector<float> in_l1(n1, 0.0f), in_r1(n1, 0.0f), out_l1(n1, 0.0f), out_r1(n1, 0.0f);
+  for (uint32_t i = 0; i < n1; ++i) {
+    in_l1[i] = std::sin(0.03f * static_cast<float>(i));
+    in_r1[i] = std::cos(0.02f * static_cast<float>(i));
+  }
+  corrupter::AudioBlock a1{in_l1.data(), in_r1.data(), out_l1.data(), out_r1.data(), n1};
+  engine.process(a1, {}, {});
+
+  engine.set_audio_context(96000.0f, 512);
+
+  const uint32_t n2 = 257;
+  std::vector<float> in_l2(n2, 0.0f), in_r2(n2, 0.0f), out_l2(n2, 0.0f), out_r2(n2, 0.0f);
+  for (uint32_t i = 0; i < n2; ++i) {
+    in_l2[i] = std::sin(0.017f * static_cast<float>(i));
+    in_r2[i] = std::cos(0.019f * static_cast<float>(i));
+  }
+  corrupter::AudioBlock a2{in_l2.data(), in_r2.data(), out_l2.data(), out_r2.data(), n2};
+  engine.process(a2, {}, {});
+
+  corrupter::RuntimeInfo info{};
+  if (!engine.get_runtime_info(&info)) {
+    return false;
+  }
+
+  return NearEqual(info.sample_rate_hz, 96000.0f, 1e-3f) &&
+         (info.max_block_frames == 512u) &&
+         (info.processed_frames == static_cast<uint64_t>(n1 + n2));
+}
+
+bool TestRequiredDramUsesMaxSupportedRate() {
+  corrupter::EngineConfig low_sr;
+  low_sr.sample_rate_hz = 32000.0f;
+  low_sr.max_supported_sample_rate_hz = 32000.0f;
+  low_sr.max_block_frames = 128;
+  low_sr.max_buffer_seconds = 60.0f;
+
+  corrupter::EngineConfig high_sr = low_sr;
+  high_sr.max_supported_sample_rate_hz = 96000.0f;
+
+  const size_t bytes_low = corrupter::Engine::required_dram_bytes(low_sr);
+  const size_t bytes_high = corrupter::Engine::required_dram_bytes(high_sr);
+  return bytes_high > bytes_low;
+}
+
 }  // namespace
 
 int main() {
@@ -925,6 +993,8 @@ int main() {
        TestExternalClockRatiosAcrossTempoRange},
       {"cv_additive_range_affects_mix", TestCvAdditiveRangeAffectsMix},
       {"freeze_latching_sync_to_clock", TestFreezeLatchingSyncToClock},
+      {"runtime_audio_context_switch", TestRuntimeAudioContextSwitch},
+      {"required_dram_uses_max_supported_rate", TestRequiredDramUsesMaxSupportedRate},
   };
 
   int failures = 0;

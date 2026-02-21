@@ -16,6 +16,7 @@
 namespace {
 
 using corrupter::DistingNtParamId;
+constexpr float kNtMaxEngineSampleRateHz = 96000.0f;
 
 static const char* kEnumBinary[] = {"Off", "On", nullptr};
 static const char* kEnumMode[] = {"Macro", "Micro", nullptr};
@@ -186,6 +187,7 @@ void calculateRequirements(_NT_algorithmRequirements& req, const int32_t* specs)
 
   corrupter::EngineConfig cfg;
   cfg.sample_rate_hz = static_cast<float>(NT_globals.sampleRate);
+  cfg.max_supported_sample_rate_hz = kNtMaxEngineSampleRateHz;
   cfg.max_block_frames = NT_globals.maxFramesPerStep;
   cfg.max_buffer_seconds = 60.0f;
   cfg.random_seed = 1;
@@ -205,6 +207,7 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
   alg->parameterPages = &parameter_pages;
 
   alg->cfg.sample_rate_hz = static_cast<float>(NT_globals.sampleRate);
+  alg->cfg.max_supported_sample_rate_hz = kNtMaxEngineSampleRateHz;
   alg->cfg.max_block_frames = NT_globals.maxFramesPerStep;
   alg->cfg.max_buffer_seconds = static_cast<float>(alg->v[P(DistingNtParamId::kParamBufferSeconds)]);
   alg->cfg.random_seed = 1;
@@ -212,6 +215,10 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs, const _NT_algorith
   alg->initialised = alg->engine.initialise(ptrs.dram,
                                              corrupter::Engine::required_dram_bytes(alg->cfg),
                                              alg->cfg);
+  if (alg->initialised) {
+    alg->engine.set_audio_context(static_cast<float>(NT_globals.sampleRate),
+                                  NT_globals.maxFramesPerStep);
+  }
   return alg;
 }
 
@@ -284,6 +291,8 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4) {
   }
 
   const int numFrames = numFramesBy4 * 4;
+  alg->engine.set_audio_context(static_cast<float>(NT_globals.sampleRate),
+                                NT_globals.maxFramesPerStep);
 
   float* in_l = busPtr(busFrames, numFrames, alg->in_l);
   float* in_r = busPtr(busFrames, numFrames, alg->in_r);

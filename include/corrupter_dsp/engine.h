@@ -21,6 +21,7 @@ enum class CorruptAlgorithm : uint8_t {
 
 struct EngineConfig {
   float sample_rate_hz = 96000.0f;
+  float max_supported_sample_rate_hz = 96000.0f;
   uint32_t max_block_frames = 256;
   float max_buffer_seconds = 60.0f;
   uint32_t random_seed = 1;
@@ -84,6 +85,8 @@ struct RuntimeInfo {
   bool external_clock_present = false;
   float current_rate_l = 1.0f;
   float current_rate_r = 1.0f;
+  float sample_rate_hz = 96000.0f;
+  uint32_t max_block_frames = 256;
 };
 
 class Engine {
@@ -103,6 +106,7 @@ class Engine {
   bool get_persistent_state(PersistentState* out) const noexcept;
   bool serialise_persistent_state(void* out, size_t out_bytes, size_t* written) const noexcept;
   bool deserialise_persistent_state(const void* data, size_t data_bytes) noexcept;
+  void set_audio_context(float sample_rate_hz, uint32_t max_block_frames) noexcept;
   void set_clock_mode_internal(bool internal) noexcept;
   bool get_runtime_info(RuntimeInfo* out) const noexcept;
 

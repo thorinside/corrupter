@@ -13,6 +13,7 @@ static inline corrupter::Engine* ToEngine(void* p) {
 static corrupter::EngineConfig ToCpp(const corrupter_engine_config_t& cfg) {
   corrupter::EngineConfig out;
   out.sample_rate_hz = cfg.sample_rate_hz;
+  out.max_supported_sample_rate_hz = cfg.max_supported_sample_rate_hz;
   out.max_block_frames = cfg.max_block_frames;
   out.max_buffer_seconds = cfg.max_buffer_seconds;
   out.random_seed = cfg.random_seed;
@@ -157,6 +158,14 @@ int corrupter_engine_deserialise_persistent_state(void* engine_memory, const voi
     return 0;
   }
   return ToEngine(engine_memory)->deserialise_persistent_state(data, data_bytes) ? 1 : 0;
+}
+
+void corrupter_engine_set_audio_context(void* engine_memory, float sample_rate_hz,
+                                        uint32_t max_block_frames) {
+  if (!engine_memory) {
+    return;
+  }
+  ToEngine(engine_memory)->set_audio_context(sample_rate_hz, max_block_frames);
 }
 
 void corrupter_engine_set_clock_mode_internal(void* engine_memory, int internal) {

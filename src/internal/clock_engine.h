@@ -9,6 +9,7 @@ namespace internal {
 class ClockEngine {
  public:
   void Reset(float sample_rate_hz, float time_01);
+  void SetSampleRate(float sample_rate_hz, uint64_t current_sample_index);
   void SetInternalMode(bool internal_mode);
   void SetTime(float time_01);
   float CurrentPeriodSamples() const;
