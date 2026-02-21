@@ -16,6 +16,8 @@ ctest --test-dir /Users/nealsanche/nosuch/corrupter/build --output-on-failure
   - Basic initialization and run sanity check.
 - `corrupter_dsp_regression`
   - Deterministic + behavior regression suite.
+- `corrupter_dsp_benchmark`
+  - Host-side throughput benchmark for profiling trends.
 
 ## Regression Coverage
 
@@ -29,6 +31,12 @@ ctest --test-dir /Users/nealsanche/nosuch/corrupter/build --output-on-failure
   - Momentary freeze gate engages non-dry frozen playback while held, returns dry after release.
 - `external_clock_changes_timing`
   - External clock gate pulses alter timing behavior relative to no-pulse run.
+- `block_invariance`
+  - Output is invariant to host block segmentation.
+- `external_clock_timeout_status`
+  - External clock status drops after timeout and remains present with sustained pulses.
+- `break_macro_intensity_affects_output`
+  - Macro Break intensity changes rendered output for fixed input and seed.
 - `c_api_parity`
   - C API path output matches C++ API output for the same scenario.
 
@@ -38,4 +46,3 @@ ctest --test-dir /Users/nealsanche/nosuch/corrupter/build --output-on-failure
 - The disting NT wrapper reference in
   `/Users/nealsanche/nosuch/corrupter/examples/distingnt_wrapper_reference.cpp`
   is not built by default in this repository because `distingNT_API` headers are external.
-

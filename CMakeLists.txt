@@ -50,3 +50,12 @@ add_test(
   NAME corrupter_dsp_regression
   COMMAND corrupter_dsp_regression
 )
+
+add_executable(corrupter_dsp_benchmark
+  examples/benchmark.cpp
+)
+
+target_link_libraries(corrupter_dsp_benchmark
+  PRIVATE
+    corrupter_dsp
+)
