@@ -71,10 +71,22 @@ ctest --test-dir /Users/nealsanche/nosuch/corrupter/build --output-on-failure
 /Users/nealsanche/nosuch/corrupter/build/corrupter_dsp_benchmark
 ```
 
+## Post-Completion Quality + Runtime Extension (February 2026)
+
+Status: `DONE`
+
+Goals:
+- Support disting NT runtime sample-rate changes (32-96 kHz) and variable block sizes without engine reconstruction.
+- Improve DSP quality in interpolation, bend/tape character, dropout edge smoothness, DJ filter character, and vinyl modeling.
+
+Checkpoint commits:
+- `d88111c` runtime audio context API and wrapper/regression integration.
+- `80e6246` DSP quality pass for interpolation/tape/corrupt models.
+- `2c8011a` integration and verification documentation updates.
+
 ## Scope Boundary
 
 Remaining non-DSP items are explicitly out of scope for this library:
 - LED behavior/UI rendering on hardware.
 - mechanical and power constraints.
 - final on-device perceptual A/B signoff against reference hardware.
-
