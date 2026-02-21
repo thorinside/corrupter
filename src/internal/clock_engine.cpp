@@ -59,19 +59,30 @@ bool ClockEngine::Step(uint64_t sample_index, bool external_pulse) {
   }
 
   if (external_pulse) {
-    if (have_external_pulse_) {
+    if (!have_external_pulse_) {
+      have_external_pulse_ = true;
+      last_external_pulse_sample_ = sample_index;
+      external_signal_present_ = true;
+
+      const float mult = ExternalRateMultiplier(time_01_);
+      active_period_samples_ = std::max(1.0f, external_period_samples_ / mult);
+      next_tick_sample_ = sample_index;
+    } else {
       const uint64_t elapsed = sample_index - last_external_pulse_sample_;
       external_period_samples_ = std::max(1.0f, static_cast<float>(elapsed));
-    }
-    last_external_pulse_sample_ = sample_index;
-    have_external_pulse_ = true;
-    external_signal_present_ = true;
+      last_external_pulse_sample_ = sample_index;
+      external_signal_present_ = true;
 
-    const float mult = ExternalRateMultiplier(time_01_);
-    active_period_samples_ = std::max(1.0f, external_period_samples_ / mult);
-    tick = true;
-    next_tick_sample_ = sample_index + static_cast<uint64_t>(active_period_samples_);
-    return tick;
+      const float mult = ExternalRateMultiplier(time_01_);
+      active_period_samples_ = std::max(1.0f, external_period_samples_ / mult);
+
+      const uint64_t period_u =
+          static_cast<uint64_t>(std::max(1.0f, active_period_samples_));
+      if (sample_index > next_tick_sample_ &&
+          (sample_index - next_tick_sample_) > (period_u / 2u)) {
+        next_tick_sample_ = sample_index;
+      }
+    }
   }
 
   if (have_external_pulse_) {
@@ -84,7 +95,12 @@ bool ClockEngine::Step(uint64_t sample_index, bool external_pulse) {
 
   if (sample_index >= next_tick_sample_) {
     tick = true;
-    next_tick_sample_ = sample_index + static_cast<uint64_t>(CurrentPeriodSamples());
+    const uint64_t period_u =
+        static_cast<uint64_t>(std::max(1.0f, CurrentPeriodSamples()));
+    next_tick_sample_ += period_u;
+    if (next_tick_sample_ <= sample_index) {
+      next_tick_sample_ = sample_index + period_u;
+    }
   }
 
   return tick;

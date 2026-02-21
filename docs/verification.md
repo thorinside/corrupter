@@ -35,6 +35,8 @@ ctest --test-dir /Users/nealsanche/nosuch/corrupter/build --output-on-failure
   - Output is invariant to host block segmentation.
 - `external_clock_timeout_status`
   - External clock status drops after timeout and remains present with sustained pulses.
+- `external_clock_ratios_tempo_range`
+  - External clock division/multiplication ordering is validated across 20/60/120/300 BPM.
 - `break_macro_intensity_affects_output`
   - Macro Break intensity changes rendered output for fixed input and seed.
 - `c_api_parity`

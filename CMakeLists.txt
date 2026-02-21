@@ -46,6 +46,11 @@ target_link_libraries(corrupter_dsp_regression
     corrupter_dsp
 )
 
+target_include_directories(corrupter_dsp_regression
+  PRIVATE
+    src
+)
+
 add_test(
   NAME corrupter_dsp_regression
   COMMAND corrupter_dsp_regression

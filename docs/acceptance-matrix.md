@@ -27,9 +27,8 @@ Legend:
 - Evidence: buffer sizing uses `sample_rate * max_buffer_seconds` in `/Users/nealsanche/nosuch/corrupter/src/engine.cpp`.
 
 5. External clock stable with div/mult and fallback.
-- Status: `PARTIAL`
-- Evidence: ratio table and free-running fallback in `/Users/nealsanche/nosuch/corrupter/src/internal/clock_engine.cpp`; timeout status tested in `external_clock_timeout_status`.
-- Gap: tempo-range validation (20-300 BPM) still needs dedicated test vectors.
+- Status: `DONE`
+- Evidence: ratio table + free-running fallback in `/Users/nealsanche/nosuch/corrupter/src/internal/clock_engine.cpp`; regressions `external_clock_timeout_status` and `external_clock_ratios_tempo_range`.
 
 6. Macro Bend/Break produce distinct synced behavior.
 - Status: `DONE`

@@ -8,6 +8,7 @@
 
 #include "corrupter_dsp/c_api.h"
 #include "corrupter_dsp/engine.h"
+#include "internal/clock_engine.h"
 
 namespace {
 
@@ -710,6 +711,61 @@ bool TestMicroBendOneVoltPerOct() {
   return base_ok && plus_ok && minus_ok;
 }
 
+bool TestExternalClockRatiosAcrossTempoRange() {
+  static constexpr int kBpms[4] = {20, 60, 120, 300};
+
+  // Use reduced SR for test runtime; clock ratio math is sample-rate invariant.
+  const float sample_rate = 9600.0f;
+
+  for (int bpm : kBpms) {
+    const uint64_t beat_interval =
+        static_cast<uint64_t>(sample_rate * 60.0f / static_cast<float>(bpm));
+    if (beat_interval == 0) {
+      return false;
+    }
+    const uint64_t total_samples = beat_interval * 64u;
+    uint64_t ticks_lo = 0;
+    uint64_t ticks_mid = 0;
+    uint64_t ticks_hi = 0;
+
+    for (int ratio_index = 0; ratio_index < 9; ++ratio_index) {
+      const float time_01 = (static_cast<float>(ratio_index) + 0.5f) / 9.0f;
+
+      corrupter::internal::ClockEngine clock;
+      clock.Reset(sample_rate, time_01);
+      clock.SetInternalMode(false);
+
+      uint64_t ticks = 0;
+      for (uint64_t s = 0; s < total_samples; ++s) {
+        const bool pulse = ((s % beat_interval) == 0u);
+        if (clock.Step(s, pulse)) {
+          ++ticks;
+        }
+      }
+
+      if (ticks == 0) {
+        return false;
+      }
+      if (!clock.ExternalSignalPresent()) {
+        return false;
+      }
+
+      if (ratio_index == 0) {
+        ticks_lo = ticks;
+      } else if (ratio_index == 4) {
+        ticks_mid = ticks;
+      } else if (ratio_index == 8) {
+        ticks_hi = ticks;
+      }
+    }
+
+    if (!(ticks_lo < ticks_mid && ticks_mid < ticks_hi)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool TestCvAdditiveRangeAffectsMix() {
   Scenario s{};
   s.cfg.sample_rate_hz = 96000.0f;
@@ -759,6 +815,8 @@ int main() {
       {"c_api_parity", TestCApiParity},
       {"persistent_state_roundtrip", TestPersistentStateRoundTrip},
       {"micro_bend_1v_per_oct", TestMicroBendOneVoltPerOct},
+      {"external_clock_ratios_tempo_range",
+       TestExternalClockRatiosAcrossTempoRange},
       {"cv_additive_range_affects_mix", TestCvAdditiveRangeAffectsMix},
   };
 
