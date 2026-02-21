@@ -556,6 +556,32 @@ bool TestExternalClockTimeoutStatus() {
   return (!info_timeout.external_clock_present) && info_active.external_clock_present;
 }
 
+bool TestBreakMacroIntensityAffectsOutput() {
+  Scenario low{};
+  low.cfg.sample_rate_hz = 96000.0f;
+  low.cfg.max_block_frames = 256;
+  low.cfg.max_buffer_seconds = 60.0f;
+  low.cfg.random_seed = 31337;
+  low.state.macro_mode = true;
+  low.state.bend_enabled = false;
+  low.state.break_enabled = true;
+  low.knobs.time_01 = 1.0f;
+  low.knobs.repeats_01 = 0.65f;
+  low.knobs.mix_01 = 1.0f;
+  low.knobs.break_01 = 0.05f;
+  low.frames = 8192;
+
+  Scenario high = low;
+  high.knobs.break_01 = 0.95f;
+
+  const StereoBuffers out_low = RunScenarioCpp(low);
+  const StereoBuffers out_high = RunScenarioCpp(high);
+
+  const uint64_t low_hash = HashF32(out_low.out_l, out_low.out_r);
+  const uint64_t high_hash = HashF32(out_high.out_l, out_high.out_r);
+  return low_hash != high_hash;
+}
+
 bool TestCApiParity() {
   Scenario s{};
   s.cfg.sample_rate_hz = 96000.0f;
@@ -608,6 +634,7 @@ int main() {
       {"external_clock_changes_timing", TestExternalClockChangesTiming},
       {"block_invariance", TestBlockInvariance},
       {"external_clock_timeout_status", TestExternalClockTimeoutStatus},
+      {"break_macro_intensity_affects_output", TestBreakMacroIntensityAffectsOutput},
       {"c_api_parity", TestCApiParity},
   };
 

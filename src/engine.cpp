@@ -37,6 +37,7 @@ struct PlaybackChannelState {
   float phase = 0.0f;
   float rate = 1.0f;
   uint32_t subsection_index = 0;
+  uint32_t repeat_scale = 1;
   float silence_duty = 0.0f;
   bool reverse = false;
   OnePole rate_smoother;
@@ -46,6 +47,7 @@ struct PlaybackChannelState {
     phase = 0.0f;
     rate = 1.0f;
     subsection_index = 0;
+    repeat_scale = 1;
     silence_duty = 0.0f;
     reverse = false;
     rate_smoother.Reset(1.0f);
@@ -178,9 +180,17 @@ struct Engine::Impl {
           if (ch->subsection_index >= segment.repeats) {
             ch->subsection_index = segment.repeats - 1;
           }
+          const uint32_t max_scale =
+              1u + static_cast<uint32_t>(break_eff * 7.0f);
+          ch->repeat_scale =
+              1u + static_cast<uint32_t>(rng.Next01() * static_cast<float>(max_scale));
+          if (ch->repeat_scale > max_scale) {
+            ch->repeat_scale = max_scale;
+          }
           ch->silence_duty = 0.9f * break_eff * rng.Next01();
         } else {
           ch->subsection_index = 0;
+          ch->repeat_scale = 1;
           ch->silence_duty = 0.0f;
         }
       } else {
@@ -193,9 +203,11 @@ struct Engine::Impl {
           if (ch->subsection_index >= segment.repeats) {
             ch->subsection_index = segment.repeats - 1;
           }
+          ch->repeat_scale = 1;
           ch->silence_duty = 0.0f;
         } else {
           ch->subsection_index = 0;
+          ch->repeat_scale = 1;
           ch->silence_duty = 0.9f * break_eff;
         }
       }
@@ -210,6 +222,7 @@ struct Engine::Impl {
       channels[1].rate = channels[0].rate;
       channels[1].reverse = channels[0].reverse;
       channels[1].subsection_index = channels[0].subsection_index;
+      channels[1].repeat_scale = channels[0].repeat_scale;
       channels[1].silence_duty = channels[0].silence_duty;
     } else {
       apply_one(&channels[0]);
@@ -442,24 +455,26 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
 
       const uint32_t sub_idx =
           std::min(pcs.subsection_index, std::max(1u, impl_->segment.repeats) - 1u);
+      const uint32_t sub_len = std::max(
+          1u, impl_->segment.subsection_length / std::max(1u, pcs.repeat_scale));
       const uint32_t subsection_start =
           (impl_->segment.start + sub_idx * impl_->segment.subsection_length) % impl_->buffer_frames;
 
       float read_pos = pcs.phase;
       if (pcs.reverse) {
-        read_pos = static_cast<float>(impl_->segment.subsection_length - 1u) - read_pos;
+        read_pos = static_cast<float>(sub_len - 1u) - read_pos;
       }
 
       const float read_index = static_cast<float>(subsection_start) + read_pos;
       float wet = ReadBufferLinear(buffer, impl_->buffer_frames, read_index);
 
-      const float window = impl_->ComputeWindowGain(pcs.phase, impl_->segment.subsection_length);
+      const float window = impl_->ComputeWindowGain(pcs.phase, sub_len);
       wet *= window;
 
       if (pcs.silence_duty > 0.0f) {
         const float silence_from =
             (1.0f - internal::Clamp01(pcs.silence_duty)) *
-            static_cast<float>(impl_->segment.subsection_length);
+            static_cast<float>(sub_len);
         if (pcs.phase >= silence_from) {
           wet = 0.0f;
         }
@@ -473,9 +488,9 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
       }
 
       pcs.phase += smooth_rate;
-      if (pcs.phase >= static_cast<float>(impl_->segment.subsection_length)) {
+      if (pcs.phase >= static_cast<float>(sub_len)) {
         pcs.phase = internal::WrapPositive(
-            pcs.phase, static_cast<float>(impl_->segment.subsection_length));
+            pcs.phase, static_cast<float>(sub_len));
       }
 
       const float mix_cv = CvOrZero(cv.mix_v, i) * 0.2f;
