@@ -43,10 +43,14 @@ ctest --test-dir /Users/nealsanche/nosuch/corrupter/build --output-on-failure
   - C API path output matches C++ API output for the same scenario.
 - `persistent_state_roundtrip`
   - Persistent state fields round-trip through the engine API.
+- `persistent_blob_roundtrip`
+  - Persistent state serializes/deserializes through the library blob API.
 - `micro_bend_1v_per_oct`
   - Micro bend CV tracks expected octave-rate ratios for -1V, 0V, +1V.
 - `cv_additive_range_affects_mix`
   - Positive/negative full-scale CV causes different mix behavior, validating additive CV range influence.
+- `freeze_latching_sync_to_clock`
+  - Latching freeze request is held until the next clock tick before engaging.
 
 ## Notes
 

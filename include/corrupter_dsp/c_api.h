@@ -77,6 +77,10 @@ void corrupter_engine_reset(void* engine_memory);
 void corrupter_engine_set_knobs(void* engine_memory, const corrupter_knob_state_t* knobs);
 void corrupter_engine_set_persistent_state(void* engine_memory,
                                            const corrupter_persistent_state_t* state);
+int corrupter_engine_serialise_persistent_state(void* engine_memory, void* out,
+                                                size_t out_bytes, size_t* written);
+int corrupter_engine_deserialise_persistent_state(void* engine_memory, const void* data,
+                                                  size_t data_bytes);
 void corrupter_engine_set_clock_mode_internal(void* engine_memory, int internal);
 void corrupter_engine_process(void* engine_memory, const corrupter_audio_block_t* audio,
                               const corrupter_cv_inputs_t* cv,
@@ -87,4 +91,3 @@ void corrupter_engine_process(void* engine_memory, const corrupter_audio_block_t
 #endif
 
 #endif  // CORRUPTER_DSP_C_API_H_
-

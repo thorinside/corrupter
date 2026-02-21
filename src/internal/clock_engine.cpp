@@ -82,6 +82,9 @@ bool ClockEngine::Step(uint64_t sample_index, bool external_pulse) {
           (sample_index - next_tick_sample_) > (period_u / 2u)) {
         next_tick_sample_ = sample_index;
       }
+      if (next_tick_sample_ > (sample_index + period_u)) {
+        next_tick_sample_ = sample_index;
+      }
     }
   }
 

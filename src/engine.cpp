@@ -74,6 +74,26 @@ float ReadBufferLinear(const float* buffer, uint32_t buffer_frames, float index)
   return buffer[i0] + (buffer[i1] - buffer[i0]) * frac;
 }
 
+struct PersistentBlobV1 {
+  uint32_t magic;
+  uint16_t version;
+  uint8_t bend_enabled;
+  uint8_t break_enabled;
+  uint8_t freeze_enabled;
+  uint8_t macro_mode;
+  uint8_t break_silence_mode;
+  uint8_t unique_stereo_mode;
+  uint8_t gate_latching;
+  uint8_t freeze_latching;
+  uint8_t corrupt_gate_is_reset;
+  uint8_t corrupt_bank;
+  uint8_t corrupt_algorithm;
+  float glitch_window_01;
+};
+
+constexpr uint32_t kPersistentMagic = 0x50525243u;  // 'CRRP'
+constexpr uint16_t kPersistentVersion = 1u;
+
 }  // namespace
 
 struct Engine::Impl {
@@ -344,6 +364,62 @@ bool Engine::get_persistent_state(PersistentState* out) const noexcept {
     return false;
   }
   *out = impl_->state;
+  return true;
+}
+
+bool Engine::serialise_persistent_state(void* out, size_t out_bytes, size_t* written) const noexcept {
+  if (!impl_ || !out || out_bytes < sizeof(PersistentBlobV1)) {
+    return false;
+  }
+
+  PersistentBlobV1 blob{};
+  blob.magic = kPersistentMagic;
+  blob.version = kPersistentVersion;
+  blob.bend_enabled = impl_->state.bend_enabled ? 1u : 0u;
+  blob.break_enabled = impl_->state.break_enabled ? 1u : 0u;
+  blob.freeze_enabled = impl_->state.freeze_enabled ? 1u : 0u;
+  blob.macro_mode = impl_->state.macro_mode ? 1u : 0u;
+  blob.break_silence_mode = impl_->state.break_silence_mode ? 1u : 0u;
+  blob.unique_stereo_mode = impl_->state.unique_stereo_mode ? 1u : 0u;
+  blob.gate_latching = impl_->state.gate_latching ? 1u : 0u;
+  blob.freeze_latching = impl_->state.freeze_latching ? 1u : 0u;
+  blob.corrupt_gate_is_reset = impl_->state.corrupt_gate_is_reset ? 1u : 0u;
+  blob.corrupt_bank = static_cast<uint8_t>(impl_->state.corrupt_bank);
+  blob.corrupt_algorithm = static_cast<uint8_t>(impl_->state.corrupt_algorithm);
+  blob.glitch_window_01 = impl_->state.glitch_window_01;
+
+  std::memcpy(out, &blob, sizeof(blob));
+  if (written) {
+    *written = sizeof(blob);
+  }
+  return true;
+}
+
+bool Engine::deserialise_persistent_state(const void* data, size_t data_bytes) noexcept {
+  if (!impl_ || !data || data_bytes < sizeof(PersistentBlobV1)) {
+    return false;
+  }
+
+  PersistentBlobV1 blob{};
+  std::memcpy(&blob, data, sizeof(blob));
+  if (blob.magic != kPersistentMagic || blob.version != kPersistentVersion) {
+    return false;
+  }
+
+  PersistentState state = impl_->state;
+  state.bend_enabled = (blob.bend_enabled != 0u);
+  state.break_enabled = (blob.break_enabled != 0u);
+  state.freeze_enabled = (blob.freeze_enabled != 0u);
+  state.macro_mode = (blob.macro_mode != 0u);
+  state.break_silence_mode = (blob.break_silence_mode != 0u);
+  state.unique_stereo_mode = (blob.unique_stereo_mode != 0u);
+  state.gate_latching = (blob.gate_latching != 0u);
+  state.freeze_latching = (blob.freeze_latching != 0u);
+  state.corrupt_gate_is_reset = (blob.corrupt_gate_is_reset != 0u);
+  state.corrupt_bank = static_cast<CorruptBank>(blob.corrupt_bank);
+  state.corrupt_algorithm = static_cast<CorruptAlgorithm>(blob.corrupt_algorithm);
+  state.glitch_window_01 = internal::Clamp01(blob.glitch_window_01);
+  set_persistent_state(state);
   return true;
 }
 

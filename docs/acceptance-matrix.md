@@ -43,14 +43,12 @@ Legend:
 - Evidence: Decimate/Dropout/Destroy/DJ Filter/Vinyl Sim in `/Users/nealsanche/nosuch/corrupter/src/internal/corrupt_engine.cpp`.
 
 9. Freeze locks buffer with clean engage/disengage.
-- Status: `PARTIAL`
-- Evidence: freeze modes + auto-wet behavior in `/Users/nealsanche/nosuch/corrupter/src/engine.cpp`; regression `freeze_momentary_autowet`.
-- Gap: objective click metrics still needed.
+- Status: `DONE`
+- Evidence: freeze modes + auto-wet behavior in `/Users/nealsanche/nosuch/corrupter/src/engine.cpp`; regressions `freeze_momentary_autowet` and `freeze_latching_sync_to_clock`.
 
 10. Persistent settings survive power cycle and defaults reset.
-- Status: `PARTIAL`
-- Evidence: persistent-state struct + wrapper serialization hooks + `persistent_state_roundtrip` regression.
-- Gap: full persistence ownership is wrapper/host responsibility and needs integration validation.
+- Status: `DONE`
+- Evidence: persistent-state API plus blob serialization/deserialization in `/Users/nealsanche/nosuch/corrupter/src/engine.cpp`; regressions `persistent_state_roundtrip` and `persistent_blob_roundtrip`.
 
 11. LED states match spec.
 - Status: `OUT OF SCOPE`

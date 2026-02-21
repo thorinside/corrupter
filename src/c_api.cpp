@@ -143,6 +143,22 @@ void corrupter_engine_set_persistent_state(void* engine_memory,
   ToEngine(engine_memory)->set_persistent_state(ToCpp(*state));
 }
 
+int corrupter_engine_serialise_persistent_state(void* engine_memory, void* out,
+                                                size_t out_bytes, size_t* written) {
+  if (!engine_memory) {
+    return 0;
+  }
+  return ToEngine(engine_memory)->serialise_persistent_state(out, out_bytes, written) ? 1 : 0;
+}
+
+int corrupter_engine_deserialise_persistent_state(void* engine_memory, const void* data,
+                                                  size_t data_bytes) {
+  if (!engine_memory) {
+    return 0;
+  }
+  return ToEngine(engine_memory)->deserialise_persistent_state(data, data_bytes) ? 1 : 0;
+}
+
 void corrupter_engine_set_clock_mode_internal(void* engine_memory, int internal) {
   if (!engine_memory) {
     return;

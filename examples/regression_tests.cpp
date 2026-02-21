@@ -675,6 +675,68 @@ bool TestPersistentStateRoundTrip() {
          NearEqual(got.glitch_window_01, set_state.glitch_window_01, 1e-6f);
 }
 
+bool TestPersistentBlobRoundTrip() {
+  corrupter::EngineConfig cfg;
+  cfg.sample_rate_hz = 96000.0f;
+  cfg.max_block_frames = 128;
+  cfg.max_buffer_seconds = 5.0f;
+  cfg.random_seed = 123;
+
+  const size_t dram_bytes = corrupter::Engine::required_dram_bytes(cfg);
+  std::vector<uint8_t> dram_a(dram_bytes);
+  std::vector<uint8_t> dram_b(dram_bytes);
+
+  corrupter::Engine a;
+  corrupter::Engine b;
+  if (!a.initialise(dram_a.data(), dram_a.size(), cfg)) {
+    return false;
+  }
+  if (!b.initialise(dram_b.data(), dram_b.size(), cfg)) {
+    return false;
+  }
+
+  corrupter::PersistentState in;
+  in.bend_enabled = true;
+  in.break_enabled = true;
+  in.freeze_enabled = true;
+  in.macro_mode = false;
+  in.break_silence_mode = true;
+  in.unique_stereo_mode = true;
+  in.gate_latching = false;
+  in.freeze_latching = false;
+  in.corrupt_gate_is_reset = true;
+  in.corrupt_bank = corrupter::CorruptBank::kExpanded;
+  in.corrupt_algorithm = corrupter::CorruptAlgorithm::kDjFilter;
+  in.glitch_window_01 = 0.33f;
+  a.set_persistent_state(in);
+
+  std::vector<uint8_t> blob(128u, 0u);
+  size_t written = 0;
+  if (!a.serialise_persistent_state(blob.data(), blob.size(), &written)) {
+    return false;
+  }
+  if (!b.deserialise_persistent_state(blob.data(), written)) {
+    return false;
+  }
+
+  corrupter::PersistentState out{};
+  if (!b.get_persistent_state(&out)) {
+    return false;
+  }
+  return (out.bend_enabled == in.bend_enabled) &&
+         (out.break_enabled == in.break_enabled) &&
+         (out.freeze_enabled == in.freeze_enabled) &&
+         (out.macro_mode == in.macro_mode) &&
+         (out.break_silence_mode == in.break_silence_mode) &&
+         (out.unique_stereo_mode == in.unique_stereo_mode) &&
+         (out.gate_latching == in.gate_latching) &&
+         (out.freeze_latching == in.freeze_latching) &&
+         (out.corrupt_gate_is_reset == in.corrupt_gate_is_reset) &&
+         (out.corrupt_bank == in.corrupt_bank) &&
+         (out.corrupt_algorithm == in.corrupt_algorithm) &&
+         NearEqual(out.glitch_window_01, in.glitch_window_01, 1e-6f);
+}
+
 bool TestMicroBendOneVoltPerOct() {
   Scenario base{};
   base.cfg.sample_rate_hz = 96000.0f;
@@ -795,6 +857,49 @@ bool TestCvAdditiveRangeAffectsMix() {
   return h_pos != h_neg;
 }
 
+bool TestFreezeLatchingSyncToClock() {
+  Scenario s{};
+  s.cfg.sample_rate_hz = 96000.0f;
+  s.cfg.max_block_frames = 256;
+  s.cfg.max_buffer_seconds = 5.0f;
+  s.cfg.random_seed = 919;
+  s.clock_mode_internal = false;
+  s.state.freeze_latching = true;
+  s.state.freeze_enabled = false;
+  s.knobs.time_01 = 0.5f;
+  s.knobs.mix_01 = 0.0f;
+  s.frames = 1600;
+
+  ModulationBuffers mod;
+  mod.clock_gate.assign(s.frames, 0.0f);
+  for (uint32_t i = 0; i < s.frames; i += 200) {
+    mod.clock_gate[i] = 5.0f;
+  }
+  mod.freeze_gate.assign(s.frames, 0.0f);
+  mod.freeze_gate[150] = 5.0f;  // request freeze before the next clock tick at 200
+
+  const StereoBuffers out = RunScenarioCpp(s, &mod);
+
+  // Before sync point (sample 200), output should remain dry.
+  for (uint32_t i = 20; i < 190; ++i) {
+    if (!NearEqual(out.in_l[i], out.out_l[i], 1e-6f) ||
+        !NearEqual(out.in_r[i], out.out_r[i], 1e-6f)) {
+      return false;
+    }
+  }
+
+  // After synced engage, freeze auto-wet should make output diverge from dry.
+  bool diverged = false;
+  for (uint32_t i = 240; i < 500; ++i) {
+    if (std::fabs(out.in_l[i] - out.out_l[i]) > 1e-4f ||
+        std::fabs(out.in_r[i] - out.out_r[i]) > 1e-4f) {
+      diverged = true;
+      break;
+    }
+  }
+  return diverged;
+}
+
 }  // namespace
 
 int main() {
@@ -814,10 +919,12 @@ int main() {
       {"break_macro_intensity_affects_output", TestBreakMacroIntensityAffectsOutput},
       {"c_api_parity", TestCApiParity},
       {"persistent_state_roundtrip", TestPersistentStateRoundTrip},
+      {"persistent_blob_roundtrip", TestPersistentBlobRoundTrip},
       {"micro_bend_1v_per_oct", TestMicroBendOneVoltPerOct},
       {"external_clock_ratios_tempo_range",
        TestExternalClockRatiosAcrossTempoRange},
       {"cv_additive_range_affects_mix", TestCvAdditiveRangeAffectsMix},
+      {"freeze_latching_sync_to_clock", TestFreezeLatchingSyncToClock},
   };
 
   int failures = 0;

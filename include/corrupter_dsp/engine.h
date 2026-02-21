@@ -101,6 +101,8 @@ class Engine {
   void set_knobs(const KnobState& knobs) noexcept;
   void set_persistent_state(const PersistentState& state) noexcept;
   bool get_persistent_state(PersistentState* out) const noexcept;
+  bool serialise_persistent_state(void* out, size_t out_bytes, size_t* written) const noexcept;
+  bool deserialise_persistent_state(const void* data, size_t data_bytes) noexcept;
   void set_clock_mode_internal(bool internal) noexcept;
   bool get_runtime_info(RuntimeInfo* out) const noexcept;
 
