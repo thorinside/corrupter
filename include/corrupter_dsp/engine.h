@@ -82,6 +82,8 @@ struct RuntimeInfo {
   uint64_t processed_frames = 0;
   uint64_t observed_ticks = 0;
   bool external_clock_present = false;
+  float current_rate_l = 1.0f;
+  float current_rate_r = 1.0f;
 };
 
 class Engine {
@@ -98,6 +100,7 @@ class Engine {
 
   void set_knobs(const KnobState& knobs) noexcept;
   void set_persistent_state(const PersistentState& state) noexcept;
+  bool get_persistent_state(PersistentState* out) const noexcept;
   void set_clock_mode_internal(bool internal) noexcept;
   bool get_runtime_info(RuntimeInfo* out) const noexcept;
 

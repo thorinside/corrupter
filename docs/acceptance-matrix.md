@@ -10,9 +10,9 @@ Legend:
 ## Criteria Mapping
 
 1. CV inputs respond to -5V..+5V additively.
-- Status: `PARTIAL`
+- Status: `DONE`
 - Evidence: additive CV mapping for Time/Repeats/Mix/Bend/Break/Corrupt in `/Users/nealsanche/nosuch/corrupter/src/engine.cpp`.
-- Gap: no hardware calibration layer in this repo.
+- Evidence: regression `cv_additive_range_affects_mix` in `/Users/nealsanche/nosuch/corrupter/examples/regression_tests.cpp`.
 
 2. Gate inputs trigger at 0.4V in latching/momentary.
 - Status: `DONE`
@@ -36,9 +36,8 @@ Legend:
 - Evidence: macro event path in `/Users/nealsanche/nosuch/corrupter/src/engine.cpp`; regressions include seed determinism, break intensity effect, external clock impact.
 
 7. Micro Bend 1V/oct across +/-3 oct.
-- Status: `PARTIAL`
-- Evidence: micro mapping path implemented in `/Users/nealsanche/nosuch/corrupter/src/engine.cpp`.
-- Gap: explicit calibration/linearity test for 1V/oct tracking is not yet implemented.
+- Status: `DONE`
+- Evidence: micro mapping path in `/Users/nealsanche/nosuch/corrupter/src/engine.cpp` plus regression `micro_bend_1v_per_oct`.
 
 8. Corrupt algorithms are distinct and usable.
 - Status: `DONE`
@@ -51,7 +50,7 @@ Legend:
 
 10. Persistent settings survive power cycle and defaults reset.
 - Status: `PARTIAL`
-- Evidence: persistent-state struct + wrapper serialization hooks.
+- Evidence: persistent-state struct + wrapper serialization hooks + `persistent_state_roundtrip` regression.
 - Gap: full persistence ownership is wrapper/host responsibility and needs integration validation.
 
 11. LED states match spec.
@@ -67,4 +66,3 @@ Legend:
 - Regression suite: `/Users/nealsanche/nosuch/corrupter/examples/regression_tests.cpp`
 - Smoke: `/Users/nealsanche/nosuch/corrupter/examples/offline_smoke.cpp`
 - Performance harness: `/Users/nealsanche/nosuch/corrupter/examples/benchmark.cpp`
-

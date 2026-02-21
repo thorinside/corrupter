@@ -75,6 +75,14 @@ bool NearEqual(float a, float b, float eps = 1e-7f) {
   return std::fabs(a - b) <= eps;
 }
 
+bool NearRatio(float a, float b, float rel_tol = 0.08f) {
+  if (b == 0.0f) {
+    return false;
+  }
+  const float ratio = a / b;
+  return std::fabs(ratio - 1.0f) <= rel_tol;
+}
+
 const float* VecPtr(const std::vector<float>& v, uint32_t frames) {
   return (v.size() == frames) ? v.data() : nullptr;
 }
@@ -618,6 +626,119 @@ bool TestCApiParity() {
   return ExactEqual(cpp.out_l, c.out_l) && ExactEqual(cpp.out_r, c.out_r);
 }
 
+bool TestPersistentStateRoundTrip() {
+  corrupter::EngineConfig cfg;
+  cfg.sample_rate_hz = 96000.0f;
+  cfg.max_block_frames = 128;
+  cfg.max_buffer_seconds = 5.0f;
+  cfg.random_seed = 123;
+
+  const size_t dram_bytes = corrupter::Engine::required_dram_bytes(cfg);
+  std::vector<uint8_t> dram(dram_bytes);
+  corrupter::Engine engine;
+  if (!engine.initialise(dram.data(), dram.size(), cfg)) {
+    return false;
+  }
+
+  corrupter::PersistentState set_state;
+  set_state.bend_enabled = true;
+  set_state.break_enabled = true;
+  set_state.freeze_enabled = true;
+  set_state.macro_mode = false;
+  set_state.break_silence_mode = true;
+  set_state.unique_stereo_mode = true;
+  set_state.gate_latching = false;
+  set_state.freeze_latching = false;
+  set_state.corrupt_gate_is_reset = true;
+  set_state.corrupt_bank = corrupter::CorruptBank::kExpanded;
+  set_state.corrupt_algorithm = corrupter::CorruptAlgorithm::kVinylSim;
+  set_state.glitch_window_01 = 0.77f;
+  engine.set_persistent_state(set_state);
+
+  corrupter::PersistentState got{};
+  if (!engine.get_persistent_state(&got)) {
+    return false;
+  }
+
+  return (got.bend_enabled == set_state.bend_enabled) &&
+         (got.break_enabled == set_state.break_enabled) &&
+         (got.freeze_enabled == set_state.freeze_enabled) &&
+         (got.macro_mode == set_state.macro_mode) &&
+         (got.break_silence_mode == set_state.break_silence_mode) &&
+         (got.unique_stereo_mode == set_state.unique_stereo_mode) &&
+         (got.gate_latching == set_state.gate_latching) &&
+         (got.freeze_latching == set_state.freeze_latching) &&
+         (got.corrupt_gate_is_reset == set_state.corrupt_gate_is_reset) &&
+         (got.corrupt_bank == set_state.corrupt_bank) &&
+         (got.corrupt_algorithm == set_state.corrupt_algorithm) &&
+         NearEqual(got.glitch_window_01, set_state.glitch_window_01, 1e-6f);
+}
+
+bool TestMicroBendOneVoltPerOct() {
+  Scenario base{};
+  base.cfg.sample_rate_hz = 96000.0f;
+  base.cfg.max_block_frames = 256;
+  base.cfg.max_buffer_seconds = 5.0f;
+  base.cfg.random_seed = 4242;
+  base.state.macro_mode = false;
+  base.state.bend_enabled = false;
+  base.state.break_enabled = false;
+  base.knobs.time_01 = 1.0f;
+  base.knobs.mix_01 = 1.0f;
+  base.knobs.bend_01 = 0.5f;  // center -> 0 oct base
+  base.knobs.bend_cv_attn_01 = 1.0f;
+  base.frames = 4096;
+
+  ModulationBuffers cv0;
+  cv0.bend_cv.assign(base.frames, 0.0f);
+  const corrupter::RuntimeInfo info0 = RunScenarioCppForInfo(base, &cv0);
+
+  ModulationBuffers cv_plus1;
+  cv_plus1.bend_cv.assign(base.frames, 1.0f);
+  const corrupter::RuntimeInfo info_plus1 = RunScenarioCppForInfo(base, &cv_plus1);
+
+  ModulationBuffers cv_minus1;
+  cv_minus1.bend_cv.assign(base.frames, -1.0f);
+  const corrupter::RuntimeInfo info_minus1 = RunScenarioCppForInfo(base, &cv_minus1);
+
+  const bool base_ok = NearRatio(info0.current_rate_l, 1.0f, 0.10f) &&
+                       NearRatio(info0.current_rate_r, 1.0f, 0.10f);
+  const bool plus_ok = NearRatio(info_plus1.current_rate_l, 2.0f, 0.12f) &&
+                       NearRatio(info_plus1.current_rate_r, 2.0f, 0.12f);
+  const bool minus_ok = NearRatio(info_minus1.current_rate_l, 0.5f, 0.12f) &&
+                        NearRatio(info_minus1.current_rate_r, 0.5f, 0.12f);
+  return base_ok && plus_ok && minus_ok;
+}
+
+bool TestCvAdditiveRangeAffectsMix() {
+  Scenario s{};
+  s.cfg.sample_rate_hz = 96000.0f;
+  s.cfg.max_block_frames = 256;
+  s.cfg.max_buffer_seconds = 5.0f;
+  s.cfg.random_seed = 5656;
+  s.state.macro_mode = true;
+  s.state.bend_enabled = true;
+  s.state.break_enabled = true;
+  s.knobs.time_01 = 1.0f;
+  s.knobs.repeats_01 = 0.6f;
+  s.knobs.mix_01 = 0.3f;
+  s.knobs.bend_01 = 0.7f;
+  s.knobs.break_01 = 0.7f;
+  s.frames = 4096;
+
+  ModulationBuffers cv_pos;
+  cv_pos.mix_cv.assign(s.frames, 5.0f);
+  const StereoBuffers out_pos = RunScenarioCpp(s, &cv_pos);
+
+  ModulationBuffers cv_neg;
+  cv_neg.mix_cv.assign(s.frames, -5.0f);
+  const StereoBuffers out_neg = RunScenarioCpp(s, &cv_neg);
+
+  const uint64_t h_pos = HashF32(out_pos.out_l, out_pos.out_r);
+  const uint64_t h_neg = HashF32(out_neg.out_l, out_neg.out_r);
+  return h_pos != h_neg;
+}
+
 }  // namespace
 
 int main() {
@@ -636,6 +757,9 @@ int main() {
       {"external_clock_timeout_status", TestExternalClockTimeoutStatus},
       {"break_macro_intensity_affects_output", TestBreakMacroIntensityAffectsOutput},
       {"c_api_parity", TestCApiParity},
+      {"persistent_state_roundtrip", TestPersistentStateRoundTrip},
+      {"micro_bend_1v_per_oct", TestMicroBendOneVoltPerOct},
+      {"cv_additive_range_affects_mix", TestCvAdditiveRangeAffectsMix},
   };
 
   int failures = 0;

@@ -95,6 +95,8 @@ struct Engine::Impl {
   uint32_t write_idx = 0;
   uint64_t processed_frames = 0;
   uint64_t observed_ticks = 0;
+  float current_rate_l = 1.0f;
+  float current_rate_r = 1.0f;
   float* buffer_l = nullptr;
   float* buffer_r = nullptr;
 
@@ -295,6 +297,8 @@ void Engine::reset() noexcept {
   impl_->write_idx = 0;
   impl_->processed_frames = 0;
   impl_->observed_ticks = 0;
+  impl_->current_rate_l = 1.0f;
+  impl_->current_rate_r = 1.0f;
   impl_->prev_gate = {};
   impl_->pending_freeze_toggle = false;
   impl_->corrupt_enabled = false;
@@ -335,6 +339,14 @@ void Engine::set_persistent_state(const PersistentState& state) noexcept {
   impl_->state.glitch_window_01 = internal::Clamp01(impl_->state.glitch_window_01);
 }
 
+bool Engine::get_persistent_state(PersistentState* out) const noexcept {
+  if (!impl_ || !out) {
+    return false;
+  }
+  *out = impl_->state;
+  return true;
+}
+
 void Engine::set_clock_mode_internal(bool internal) noexcept {
   if (!impl_) {
     return;
@@ -349,6 +361,8 @@ bool Engine::get_runtime_info(RuntimeInfo* out) const noexcept {
   out->processed_frames = impl_->processed_frames;
   out->observed_ticks = impl_->observed_ticks;
   out->external_clock_present = impl_->clock.ExternalSignalPresent();
+  out->current_rate_l = impl_->current_rate_l;
+  out->current_rate_r = impl_->current_rate_r;
   return true;
 }
 
@@ -452,6 +466,11 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
 
       const float target_rate = std::max(0.01f, pcs.rate);
       const float smooth_rate = pcs.rate_smoother.Tick(target_rate);
+      if (ch == 0) {
+        impl_->current_rate_l = smooth_rate;
+      } else {
+        impl_->current_rate_r = smooth_rate;
+      }
 
       const uint32_t sub_idx =
           std::min(pcs.subsection_index, std::max(1u, impl_->segment.repeats) - 1u);

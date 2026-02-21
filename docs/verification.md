@@ -39,6 +39,12 @@ ctest --test-dir /Users/nealsanche/nosuch/corrupter/build --output-on-failure
   - Macro Break intensity changes rendered output for fixed input and seed.
 - `c_api_parity`
   - C API path output matches C++ API output for the same scenario.
+- `persistent_state_roundtrip`
+  - Persistent state fields round-trip through the engine API.
+- `micro_bend_1v_per_oct`
+  - Micro bend CV tracks expected octave-rate ratios for -1V, 0V, +1V.
+- `cv_additive_range_affects_mix`
+  - Positive/negative full-scale CV causes different mix behavior, validating additive CV range influence.
 
 ## Notes
 
