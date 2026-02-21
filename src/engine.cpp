@@ -23,6 +23,12 @@ struct OnePole {
   float value = 0.0f;
   float coeff = 0.02f;
 
+  void SetTimeMs(float ms, float sample_rate_hz) {
+    const float sr = std::max(1.0f, sample_rate_hz);
+    const float tau_s = std::max(0.0001f, ms * 0.001f);
+    coeff = 1.0f - std::exp(-1.0f / (tau_s * sr));
+  }
+
   void Reset(float v) {
     value = v;
   }
@@ -41,6 +47,15 @@ struct PlaybackChannelState {
   float silence_duty = 0.0f;
   bool reverse = false;
   OnePole rate_smoother;
+  float tape_wow_phase = 0.0f;
+  float tape_flutter_phase = 0.0f;
+  float tape_wow_hz = 0.0f;
+  float tape_flutter_hz = 0.0f;
+  float tape_wow_depth = 0.0f;
+  float tape_flutter_depth = 0.0f;
+  float tape_drive = 0.0f;
+  float tape_color_coeff = 0.0f;
+  float tape_color_lp = 0.0f;
   internal::CorruptChannelState corrupt;
 
   void Reset() {
@@ -50,6 +65,15 @@ struct PlaybackChannelState {
     repeat_scale = 1;
     silence_duty = 0.0f;
     reverse = false;
+    tape_wow_phase = 0.0f;
+    tape_flutter_phase = 0.0f;
+    tape_wow_hz = 0.0f;
+    tape_flutter_hz = 0.0f;
+    tape_wow_depth = 0.0f;
+    tape_flutter_depth = 0.0f;
+    tape_drive = 0.0f;
+    tape_color_coeff = 0.0f;
+    tape_color_lp = 0.0f;
     rate_smoother.Reset(1.0f);
     corrupt = {};
   }
@@ -62,6 +86,8 @@ struct SegmentState {
   uint32_t subsection_length = 1;
 };
 
+constexpr float kTwoPi = 6.28318530717958647693f;
+
 float ReadBufferLinear(const float* buffer, uint32_t buffer_frames, float index) {
   if (!buffer || buffer_frames == 0) {
     return 0.0f;
@@ -72,6 +98,39 @@ float ReadBufferLinear(const float* buffer, uint32_t buffer_frames, float index)
   const uint32_t i1 = (i0 + 1u) % buffer_frames;
   const float frac = wrapped - static_cast<float>(i0);
   return buffer[i0] + (buffer[i1] - buffer[i0]) * frac;
+}
+
+float Hermite4(float y0, float y1, float y2, float y3, float t) {
+  const float c0 = y1;
+  const float c1 = 0.5f * (y2 - y0);
+  const float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+  const float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+  return ((c3 * t + c2) * t + c1) * t + c0;
+}
+
+float ReadBufferCubic(const float* buffer, uint32_t buffer_frames, float index) {
+  if (!buffer || buffer_frames == 0u) {
+    return 0.0f;
+  }
+  if (buffer_frames < 4u) {
+    return ReadBufferLinear(buffer, buffer_frames, index);
+  }
+
+  const float wrapped = internal::WrapPositive(index, static_cast<float>(buffer_frames));
+  const uint32_t i1 = static_cast<uint32_t>(wrapped);
+  const uint32_t i0 = (i1 + buffer_frames - 1u) % buffer_frames;
+  const uint32_t i2 = (i1 + 1u) % buffer_frames;
+  const uint32_t i3 = (i1 + 2u) % buffer_frames;
+  const float t = wrapped - static_cast<float>(i1);
+
+  const float y0 = buffer[i0];
+  const float y1 = buffer[i1];
+  const float y2 = buffer[i2];
+  const float y3 = buffer[i3];
+  const float v = Hermite4(y0, y1, y2, y3, t);
+  const float lo = std::min(y1, y2) - 0.25f;
+  const float hi = std::max(y1, y2) + 0.25f;
+  return internal::Clamp(v, lo, hi);
 }
 
 struct PersistentBlobV1 {
@@ -195,8 +254,9 @@ struct Engine::Impl {
   }
 
   void ApplyTickEvents(float bend_macro_eff, float bend_micro_octaves,
-                       float break_eff, float corrupt_eff) {
+                       float break_eff, float corrupt_eff, float sample_rate_hz) {
     const bool shared = (!state.unique_stereo_mode) || (!state.macro_mode);
+    const float sr = std::max(1.0f, sample_rate_hz);
 
     auto apply_one = [&](PlaybackChannelState* ch) {
       if (!ch) {
@@ -205,12 +265,31 @@ struct Engine::Impl {
 
       if (state.macro_mode) {
         if (state.bend_enabled) {
-          const float rate_oct = (rng.NextSigned() * 3.0f) * bend_macro_eff;
-          ch->rate = std::pow(2.0f, rate_oct);
+          const float wobble = internal::Clamp01(bend_macro_eff);
+          float rate_oct = rng.NextSigned() * (0.35f + 2.65f * wobble);
+          if (rng.Next01() < (0.12f * wobble)) {
+            rate_oct -= (0.5f + 1.7f * rng.Next01()) * wobble;
+          }
+          ch->rate = std::pow(2.0f, internal::Clamp(rate_oct, -3.0f, 3.0f));
           ch->reverse = (rng.Next01() < (0.15f + 0.75f * bend_macro_eff));
+          ch->tape_wow_hz = 0.05f + 0.55f * wobble * (0.6f + 0.4f * rng.Next01());
+          ch->tape_flutter_hz = 2.0f + 9.0f * wobble * (0.7f + 0.3f * rng.Next01());
+          ch->tape_wow_depth = 0.0005f + 0.028f * wobble;
+          ch->tape_flutter_depth = 0.0003f + 0.012f * wobble;
+          ch->tape_drive = 0.08f + 1.15f * wobble;
+          const float tape_cut_hz = 18000.0f - 12000.0f * wobble;
+          ch->tape_color_coeff = std::exp(-kTwoPi * tape_cut_hz / sr);
+          ch->rate_smoother.SetTimeMs(8.0f + 95.0f * wobble, sr);
         } else {
           ch->rate = 1.0f;
           ch->reverse = false;
+          ch->tape_wow_hz = 0.0f;
+          ch->tape_flutter_hz = 0.0f;
+          ch->tape_wow_depth = 0.0f;
+          ch->tape_flutter_depth = 0.0f;
+          ch->tape_drive = 0.0f;
+          ch->tape_color_coeff = 0.0f;
+          ch->rate_smoother.SetTimeMs(6.0f, sr);
         }
 
         if (state.break_enabled) {
@@ -233,8 +312,19 @@ struct Engine::Impl {
           ch->silence_duty = 0.0f;
         }
       } else {
-        ch->rate = std::pow(2.0f, internal::Clamp(bend_micro_octaves, -3.0f, 3.0f));
+        const float micro_oct = internal::Clamp(bend_micro_octaves, -3.0f, 3.0f);
+        const float micro_intensity =
+            state.bend_enabled ? internal::Clamp01(std::fabs(micro_oct) / 3.0f) : 0.0f;
+        ch->rate = std::pow(2.0f, micro_oct);
         ch->reverse = state.bend_enabled;
+        ch->tape_wow_hz = 0.12f + 0.30f * micro_intensity;
+        ch->tape_flutter_hz = 3.0f + 5.0f * micro_intensity;
+        ch->tape_wow_depth = 0.0002f + 0.0080f * micro_intensity;
+        ch->tape_flutter_depth = 0.0002f + 0.0030f * micro_intensity;
+        ch->tape_drive = 0.05f + 0.45f * micro_intensity;
+        const float tape_cut_hz = 19000.0f - 7000.0f * micro_intensity;
+        ch->tape_color_coeff = std::exp(-kTwoPi * tape_cut_hz / sr);
+        ch->rate_smoother.SetTimeMs(4.0f + 20.0f * micro_intensity, sr);
 
         if (!state.break_silence_mode) {
           ch->subsection_index =
@@ -263,6 +353,13 @@ struct Engine::Impl {
       channels[1].subsection_index = channels[0].subsection_index;
       channels[1].repeat_scale = channels[0].repeat_scale;
       channels[1].silence_duty = channels[0].silence_duty;
+      channels[1].tape_wow_hz = channels[0].tape_wow_hz;
+      channels[1].tape_flutter_hz = channels[0].tape_flutter_hz;
+      channels[1].tape_wow_depth = channels[0].tape_wow_depth;
+      channels[1].tape_flutter_depth = channels[0].tape_flutter_depth;
+      channels[1].tape_drive = channels[0].tape_drive;
+      channels[1].tape_color_coeff = channels[0].tape_color_coeff;
+      channels[1].rate_smoother.coeff = channels[0].rate_smoother.coeff;
     } else {
       apply_one(&channels[0]);
       apply_one(&channels[1]);
@@ -577,7 +674,8 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
       }
 
       impl_->UpdateSegmentOnTick(repeats_eff);
-      impl_->ApplyTickEvents(bend_eff, bend_micro_oct, break_eff, corrupt_eff);
+      impl_->ApplyTickEvents(bend_eff, bend_micro_oct, break_eff, corrupt_eff,
+                             impl_->runtime_sample_rate_hz);
     }
 
     if (!impl_->state.freeze_enabled) {
@@ -590,7 +688,21 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
       PlaybackChannelState& pcs = impl_->channels[ch];
       const float* buffer = (ch == 0) ? impl_->buffer_l : impl_->buffer_r;
 
-      const float target_rate = std::max(0.01f, pcs.rate);
+      const float sr = std::max(1.0f, impl_->runtime_sample_rate_hz);
+      if ((pcs.tape_wow_depth > 0.0f) || (pcs.tape_flutter_depth > 0.0f)) {
+        pcs.tape_wow_phase += (kTwoPi * pcs.tape_wow_hz) / sr;
+        if (pcs.tape_wow_phase >= kTwoPi) {
+          pcs.tape_wow_phase -= kTwoPi;
+        }
+        pcs.tape_flutter_phase += (kTwoPi * pcs.tape_flutter_hz) / sr;
+        if (pcs.tape_flutter_phase >= kTwoPi) {
+          pcs.tape_flutter_phase -= kTwoPi;
+        }
+      }
+      const float wow = pcs.tape_wow_depth * std::sin(pcs.tape_wow_phase);
+      const float flutter = pcs.tape_flutter_depth * std::sin(pcs.tape_flutter_phase);
+      const float tape_mod = std::max(0.2f, 1.0f + wow + flutter);
+      const float target_rate = std::max(0.01f, pcs.rate * tape_mod);
       const float smooth_rate = pcs.rate_smoother.Tick(target_rate);
       if (ch == 0) {
         impl_->current_rate_l = smooth_rate;
@@ -611,7 +723,7 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
       }
 
       const float read_index = static_cast<float>(subsection_start) + read_pos;
-      float wet = ReadBufferLinear(buffer, impl_->buffer_frames, read_index);
+      float wet = ReadBufferCubic(buffer, impl_->buffer_frames, read_index);
 
       const float window = impl_->ComputeWindowGain(pcs.phase, sub_len);
       wet *= window;
@@ -623,6 +735,13 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
         if (pcs.phase >= silence_from) {
           wet = 0.0f;
         }
+      }
+
+      if ((pcs.tape_drive > 0.0f) || (pcs.tape_color_coeff > 0.0f)) {
+        const float driven = std::tanh(wet * (1.0f + pcs.tape_drive));
+        const float a = internal::Clamp(pcs.tape_color_coeff, 0.0f, 0.9999f);
+        pcs.tape_color_lp = (1.0f - a) * driven + a * pcs.tape_color_lp;
+        wet = 0.65f * driven + 0.35f * pcs.tape_color_lp;
       }
 
       if (impl_->corrupt_enabled || impl_->knobs.corrupt_01 > 0.0001f ||
