@@ -10,11 +10,15 @@ enable_testing()
 add_library(corrupter_dsp STATIC
   src/engine.cpp
   src/c_api.cpp
+  src/internal/clock_engine.cpp
+  src/internal/corrupt_engine.cpp
 )
 
 target_include_directories(corrupter_dsp
   PUBLIC
     include
+  PRIVATE
+    src
 )
 
 target_compile_options(corrupter_dsp
