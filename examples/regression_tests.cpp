@@ -129,6 +129,115 @@ StereoBuffers RunScenarioCpp(const Scenario& s, const ModulationBuffers* mod = n
   return buf;
 }
 
+const float* PtrAt(const std::vector<float>& v, uint32_t offset, uint32_t full_frames) {
+  if (v.size() != full_frames || offset >= full_frames) {
+    return nullptr;
+  }
+  return v.data() + offset;
+}
+
+StereoBuffers RunScenarioCppChunked(const Scenario& s, const ModulationBuffers* mod,
+                                    const std::vector<uint32_t>& chunk_pattern) {
+  StereoBuffers buf = MakeInput(s.frames);
+  if (chunk_pattern.empty()) {
+    throw std::runtime_error("chunk_pattern must not be empty");
+  }
+
+  const size_t dram_bytes = corrupter::Engine::required_dram_bytes(s.cfg);
+  std::vector<uint8_t> dram(dram_bytes);
+  corrupter::Engine engine;
+  if (!engine.initialise(dram.data(), dram.size(), s.cfg)) {
+    throw std::runtime_error("engine.init failed");
+  }
+
+  engine.set_persistent_state(s.state);
+  engine.set_knobs(s.knobs);
+  engine.set_clock_mode_internal(s.clock_mode_internal);
+
+  uint32_t offset = 0;
+  size_t pattern_i = 0;
+  while (offset < s.frames) {
+    const uint32_t remaining = s.frames - offset;
+    const uint32_t n = std::min(remaining, chunk_pattern[pattern_i % chunk_pattern.size()]);
+    ++pattern_i;
+
+    corrupter::AudioBlock audio;
+    audio.in_l = buf.in_l.data() + offset;
+    audio.in_r = buf.in_r.data() + offset;
+    audio.out_l = buf.out_l.data() + offset;
+    audio.out_r = buf.out_r.data() + offset;
+    audio.frames = n;
+
+    corrupter::CvInputs cv;
+    corrupter::GateInputs gates;
+    if (mod) {
+      cv.time_v = PtrAt(mod->time_cv, offset, s.frames);
+      cv.repeats_v = PtrAt(mod->repeats_cv, offset, s.frames);
+      cv.mix_v = PtrAt(mod->mix_cv, offset, s.frames);
+      cv.bend_v = PtrAt(mod->bend_cv, offset, s.frames);
+      cv.break_v = PtrAt(mod->break_cv, offset, s.frames);
+      cv.corrupt_v = PtrAt(mod->corrupt_cv, offset, s.frames);
+
+      gates.bend_gate_v = PtrAt(mod->bend_gate, offset, s.frames);
+      gates.break_gate_v = PtrAt(mod->break_gate, offset, s.frames);
+      gates.corrupt_gate_v = PtrAt(mod->corrupt_gate, offset, s.frames);
+      gates.freeze_gate_v = PtrAt(mod->freeze_gate, offset, s.frames);
+      gates.clock_gate_v = PtrAt(mod->clock_gate, offset, s.frames);
+    }
+
+    engine.process(audio, cv, gates);
+    offset += n;
+  }
+
+  return buf;
+}
+
+corrupter::RuntimeInfo RunScenarioCppForInfo(const Scenario& s, const ModulationBuffers* mod) {
+  StereoBuffers buf = MakeInput(s.frames);
+  const size_t dram_bytes = corrupter::Engine::required_dram_bytes(s.cfg);
+  std::vector<uint8_t> dram(dram_bytes);
+  corrupter::Engine engine;
+  if (!engine.initialise(dram.data(), dram.size(), s.cfg)) {
+    throw std::runtime_error("engine.init failed");
+  }
+
+  engine.set_persistent_state(s.state);
+  engine.set_knobs(s.knobs);
+  engine.set_clock_mode_internal(s.clock_mode_internal);
+
+  corrupter::AudioBlock audio;
+  audio.in_l = buf.in_l.data();
+  audio.in_r = buf.in_r.data();
+  audio.out_l = buf.out_l.data();
+  audio.out_r = buf.out_r.data();
+  audio.frames = s.frames;
+
+  corrupter::CvInputs cv;
+  corrupter::GateInputs gates;
+  if (mod) {
+    cv.time_v = VecPtr(mod->time_cv, s.frames);
+    cv.repeats_v = VecPtr(mod->repeats_cv, s.frames);
+    cv.mix_v = VecPtr(mod->mix_cv, s.frames);
+    cv.bend_v = VecPtr(mod->bend_cv, s.frames);
+    cv.break_v = VecPtr(mod->break_cv, s.frames);
+    cv.corrupt_v = VecPtr(mod->corrupt_cv, s.frames);
+
+    gates.bend_gate_v = VecPtr(mod->bend_gate, s.frames);
+    gates.break_gate_v = VecPtr(mod->break_gate, s.frames);
+    gates.corrupt_gate_v = VecPtr(mod->corrupt_gate, s.frames);
+    gates.freeze_gate_v = VecPtr(mod->freeze_gate, s.frames);
+    gates.clock_gate_v = VecPtr(mod->clock_gate, s.frames);
+  }
+
+  engine.process(audio, cv, gates);
+
+  corrupter::RuntimeInfo info{};
+  if (!engine.get_runtime_info(&info)) {
+    throw std::runtime_error("runtime info unavailable");
+  }
+  return info;
+}
+
 StereoBuffers RunScenarioC(const Scenario& s, const ModulationBuffers* mod = nullptr) {
   StereoBuffers buf = MakeInput(s.frames);
 
@@ -382,6 +491,71 @@ bool TestExternalClockChangesTiming() {
   return HashF32(a.out_l, a.out_r) != HashF32(b.out_l, b.out_r);
 }
 
+bool TestBlockInvariance() {
+  Scenario s{};
+  s.cfg.sample_rate_hz = 96000.0f;
+  s.cfg.max_block_frames = 256;
+  s.cfg.max_buffer_seconds = 60.0f;
+  s.cfg.random_seed = 5151;
+
+  s.state.macro_mode = true;
+  s.state.bend_enabled = true;
+  s.state.break_enabled = true;
+  s.state.corrupt_bank = corrupter::CorruptBank::kExpanded;
+  s.state.corrupt_algorithm = corrupter::CorruptAlgorithm::kDjFilter;
+  s.state.glitch_window_01 = 0.35f;
+
+  s.knobs.time_01 = 0.95f;
+  s.knobs.repeats_01 = 0.8f;
+  s.knobs.mix_01 = 0.9f;
+  s.knobs.bend_01 = 0.65f;
+  s.knobs.break_01 = 0.7f;
+  s.knobs.corrupt_01 = 0.6f;
+  s.frames = 8192;
+
+  ModulationBuffers mod;
+  mod.clock_gate.assign(s.frames, 0.0f);
+  for (uint32_t i = 77; i < s.frames; i += 211) {
+    mod.clock_gate[i] = 5.0f;
+  }
+
+  const StereoBuffers whole = RunScenarioCpp(s, &mod);
+  const StereoBuffers chunked =
+      RunScenarioCppChunked(s, &mod, {1u, 7u, 64u, 3u, 255u, 8u, 19u, 32u});
+  return ExactEqual(whole.out_l, chunked.out_l) &&
+         ExactEqual(whole.out_r, chunked.out_r);
+}
+
+bool TestExternalClockTimeoutStatus() {
+  Scenario s{};
+  s.cfg.sample_rate_hz = 96000.0f;
+  s.cfg.max_block_frames = 256;
+  s.cfg.max_buffer_seconds = 60.0f;
+  s.cfg.random_seed = 9191;
+  s.clock_mode_internal = false;
+  s.knobs.time_01 = 0.5f;
+  s.knobs.mix_01 = 0.7f;
+  s.frames = 10000;
+
+  ModulationBuffers timed_out;
+  timed_out.clock_gate.assign(s.frames, 0.0f);
+  timed_out.clock_gate[0] = 5.0f;
+  timed_out.clock_gate[300] = 5.0f;
+  const corrupter::RuntimeInfo info_timeout = RunScenarioCppForInfo(s, &timed_out);
+
+  ModulationBuffers active;
+  active.clock_gate.assign(s.frames, 0.0f);
+  for (uint32_t i = 0; i < s.frames; i += 300) {
+    active.clock_gate[i] = 5.0f;
+  }
+  const corrupter::RuntimeInfo info_active = RunScenarioCppForInfo(s, &active);
+
+  if (info_timeout.observed_ticks == 0 || info_active.observed_ticks == 0) {
+    return false;
+  }
+  return (!info_timeout.external_clock_present) && info_active.external_clock_present;
+}
+
 bool TestCApiParity() {
   Scenario s{};
   s.cfg.sample_rate_hz = 96000.0f;
@@ -432,6 +606,8 @@ int main() {
       {"dry_bypass", TestDryBypass},
       {"freeze_momentary_autowet", TestFreezeMomentaryAutoWet},
       {"external_clock_changes_timing", TestExternalClockChangesTiming},
+      {"block_invariance", TestBlockInvariance},
+      {"external_clock_timeout_status", TestExternalClockTimeoutStatus},
       {"c_api_parity", TestCApiParity},
   };
 

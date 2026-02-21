@@ -92,6 +92,7 @@ struct Engine::Impl {
   uint32_t buffer_frames = 0;
   uint32_t write_idx = 0;
   uint64_t processed_frames = 0;
+  uint64_t observed_ticks = 0;
   float* buffer_l = nullptr;
   float* buffer_r = nullptr;
 
@@ -280,6 +281,7 @@ void Engine::reset() noexcept {
 
   impl_->write_idx = 0;
   impl_->processed_frames = 0;
+  impl_->observed_ticks = 0;
   impl_->prev_gate = {};
   impl_->pending_freeze_toggle = false;
   impl_->corrupt_enabled = false;
@@ -325,6 +327,16 @@ void Engine::set_clock_mode_internal(bool internal) noexcept {
     return;
   }
   impl_->clock.SetInternalMode(internal);
+}
+
+bool Engine::get_runtime_info(RuntimeInfo* out) const noexcept {
+  if (!impl_ || !out) {
+    return false;
+  }
+  out->processed_frames = impl_->processed_frames;
+  out->observed_ticks = impl_->observed_ticks;
+  out->external_clock_present = impl_->clock.ExternalSignalPresent();
+  return true;
 }
 
 void Engine::process(const AudioBlock& audio, const CvInputs& cv,
@@ -405,6 +417,7 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
                                  impl_->knobs.corrupt_cv_attn_01);
 
     if (tick) {
+      ++impl_->observed_ticks;
       if (impl_->pending_freeze_toggle) {
         impl_->state.freeze_enabled = !impl_->state.freeze_enabled;
         impl_->pending_freeze_toggle = false;

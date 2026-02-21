@@ -13,6 +13,7 @@ class ClockEngine {
   void SetTime(float time_01);
   float CurrentPeriodSamples() const;
   bool Step(uint64_t sample_index, bool external_pulse);
+  bool ExternalSignalPresent() const;
 
  private:
   static float ExternalRateMultiplier(float time_01);
@@ -26,10 +27,10 @@ class ClockEngine {
   uint64_t next_tick_sample_ = 0;
   uint64_t last_external_pulse_sample_ = 0;
   bool have_external_pulse_ = false;
+  bool external_signal_present_ = false;
 };
 
 }  // namespace internal
 }  // namespace corrupter
 
 #endif  // CORRUPTER_DSP_INTERNAL_CLOCK_ENGINE_H_
-

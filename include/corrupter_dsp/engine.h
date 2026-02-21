@@ -78,6 +78,12 @@ struct AudioBlock {
   uint32_t frames = 0;
 };
 
+struct RuntimeInfo {
+  uint64_t processed_frames = 0;
+  uint64_t observed_ticks = 0;
+  bool external_clock_present = false;
+};
+
 class Engine {
  public:
   Engine() noexcept;
@@ -93,6 +99,7 @@ class Engine {
   void set_knobs(const KnobState& knobs) noexcept;
   void set_persistent_state(const PersistentState& state) noexcept;
   void set_clock_mode_internal(bool internal) noexcept;
+  bool get_runtime_info(RuntimeInfo* out) const noexcept;
 
   void process(const AudioBlock& audio, const CvInputs& cv, const GateInputs& gates) noexcept;
 
@@ -104,4 +111,3 @@ class Engine {
 }  // namespace corrupter
 
 #endif  // CORRUPTER_DSP_ENGINE_H_
-

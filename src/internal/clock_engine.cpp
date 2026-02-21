@@ -23,6 +23,7 @@ void ClockEngine::Reset(float sample_rate_hz, float time_01) {
   next_tick_sample_ = 0;
   last_external_pulse_sample_ = 0;
   have_external_pulse_ = false;
+  external_signal_present_ = false;
 }
 
 void ClockEngine::SetInternalMode(bool internal_mode) {
@@ -47,6 +48,7 @@ bool ClockEngine::Step(uint64_t sample_index, bool external_pulse) {
   bool tick = false;
 
   if (internal_mode_) {
+    external_signal_present_ = false;
     const float period = ComputeInternalPeriodSamples();
     active_period_samples_ = period;
     if (sample_index >= next_tick_sample_) {
@@ -63,6 +65,7 @@ bool ClockEngine::Step(uint64_t sample_index, bool external_pulse) {
     }
     last_external_pulse_sample_ = sample_index;
     have_external_pulse_ = true;
+    external_signal_present_ = true;
 
     const float mult = ExternalRateMultiplier(time_01_);
     active_period_samples_ = std::max(1.0f, external_period_samples_ / mult);
@@ -71,12 +74,24 @@ bool ClockEngine::Step(uint64_t sample_index, bool external_pulse) {
     return tick;
   }
 
+  if (have_external_pulse_) {
+    const uint64_t timeout =
+        static_cast<uint64_t>(std::max(1.0f, external_period_samples_ * 4.0f));
+    if ((sample_index - last_external_pulse_sample_) >= timeout) {
+      external_signal_present_ = false;
+    }
+  }
+
   if (sample_index >= next_tick_sample_) {
     tick = true;
     next_tick_sample_ = sample_index + static_cast<uint64_t>(CurrentPeriodSamples());
   }
 
   return tick;
+}
+
+bool ClockEngine::ExternalSignalPresent() const {
+  return external_signal_present_;
 }
 
 float ClockEngine::ExternalRateMultiplier(float time_01) {
