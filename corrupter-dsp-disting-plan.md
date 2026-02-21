@@ -5,7 +5,7 @@
 Build only the DSP as a reusable C++ library that reproduces the PRD behavior of the Data Bender-style engine. A separate implementer should be able to wrap that library as a disting NT C++ plug-in without changing DSP internals.
 
 In scope:
-- Real-time stereo DSP engine at 96 kHz.
+- Real-time stereo DSP engine with runtime host sample rate support (32-96 kHz on NT).
 - Macro + Micro behavior for Bend/Break.
 - Corrupt banks (legacy + expanded) and algorithm switching.
 - Clocking, Freeze, Repeats, glitch windowing, stereo unique/shared behavior.
@@ -50,7 +50,7 @@ Plugin API target (verified from official API headers/examples):
 ## 4. Real-Time Constraints and Budgets
 
 Hard constraints:
-- 96,000 Hz stereo sample processing.
+- Stereo processing must remain correct across host-selected sample rates (32-96 kHz on NT).
 - Block size variable (`1..NT_globals.maxFramesPerStep`), block-invariant behavior.
 - No locks, no heap alloc/free, no filesystem I/O in audio path.
 - Denormal-safe math and bounded parameter smoothing.
@@ -106,7 +106,8 @@ Signal flow (matches PRD):
 namespace corrupter {
 
 struct EngineConfig {
-  float sample_rate_hz;             // expected 96000
+  float sample_rate_hz;             // initial host sample rate
+  float max_supported_sample_rate_hz; // allocate for worst-case host sample rate
   uint32_t max_block_frames;        // host max
   float max_buffer_seconds;         // >= 60
   uint32_t random_seed;
@@ -172,6 +173,7 @@ public:
 
   void set_knobs(const KnobState& k);
   void set_persistent_state(const PersistentState& s);
+  void set_audio_context(float sample_rate_hz, uint32_t max_block_frames);
   void set_clock_mode_internal(bool internal);
 
   void process(const AudioBlock& audio, const CvInputs& cv, const GateInputs& gates);
@@ -316,7 +318,7 @@ Memory request strategy:
 - placement-new wrapper in `ptrs.sram`.
 - set `self->parameters` and `self->parameterPages`.
 - initialize engine with `ptrs.dram`.
-- cache sample rate from `NT_globals.sampleRate`.
+- set initial audio context from `NT_globals.sampleRate` and `NT_globals.maxFramesPerStep`.
 
 ## 9.3 Bus and Parameter Contract
 Use explicit routing parameters, not hardcoded bus IDs.
@@ -361,9 +363,10 @@ Recommended page groups:
 Inside `_NT_factory.step`:
 1. `frames = numFramesBy4 * 4`.
 2. Resolve bus pointers for all selected routing params.
-3. Populate `AudioBlock`, `CvInputs`, `GateInputs`.
-4. Call `engine.process(...)`.
-5. Write to output busses:
+3. Call `engine.set_audio_context(NT_globals.sampleRate, NT_globals.maxFramesPerStep)`.
+4. Populate `AudioBlock`, `CvInputs`, `GateInputs`.
+5. Call `engine.process(...)`.
+6. Write to output busses:
   - replace mode: assign.
   - add mode: accumulate.
 

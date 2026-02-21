@@ -25,6 +25,7 @@ Legend:
 4. Buffer stores at least 60 seconds stereo.
 - Status: `DONE`
 - Evidence: buffer sizing uses `sample_rate * max_buffer_seconds` in `/Users/nealsanche/nosuch/corrupter/src/engine.cpp`.
+- Evidence: DRAM sizing supports host runtime changes via `max_supported_sample_rate_hz`.
 
 5. External clock stable with div/mult and fallback.
 - Status: `DONE`
@@ -57,6 +58,11 @@ Legend:
 12. Mechanical/power limits.
 - Status: `OUT OF SCOPE`
 - Reason: hardware requirement, not software DSP library.
+
+13. Runtime host sample-rate and block-size changes are supported without engine reconstruction.
+- Status: `DONE`
+- Evidence: runtime context API in `/Users/nealsanche/nosuch/corrupter/src/engine.cpp`.
+- Evidence: regression `runtime_audio_context_switch` in `/Users/nealsanche/nosuch/corrupter/examples/regression_tests.cpp`.
 
 ## Test Entry Points
 

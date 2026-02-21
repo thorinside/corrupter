@@ -123,6 +123,10 @@ Group behavior:
 - Convert all normalized controls from `0..1000` to `0.0f..1.0f` before calling DSP.
 - CV bus params are sampled per frame. If bus select is `0`, pass null pointer for that CV/gate input.
 - Gate inputs are regular CV busses interpreted by DSP at threshold `0.4V`.
+- Construct `EngineConfig` with:
+  - `sample_rate_hz = NT_globals.sampleRate`
+  - `max_supported_sample_rate_hz = 96000.0f` (or current platform max)
+  - `max_block_frames = NT_globals.maxFramesPerStep`
+- Call `engine.set_audio_context(NT_globals.sampleRate, NT_globals.maxFramesPerStep)` at least once per `step()` before `process()`.
 - `kParamResetEngine` and `kParamRestoreDefaults` use confirm semantics and return to `0`.
 - Keep this mapping stable after initial release; only append new IDs.
-

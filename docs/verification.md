@@ -51,6 +51,10 @@ ctest --test-dir /Users/nealsanche/nosuch/corrupter/build --output-on-failure
   - Positive/negative full-scale CV causes different mix behavior, validating additive CV range influence.
 - `freeze_latching_sync_to_clock`
   - Latching freeze request is held until the next clock tick before engaging.
+- `runtime_audio_context_switch`
+  - Runtime sample-rate/max-block updates are applied correctly without reinitialization.
+- `required_dram_uses_max_supported_rate`
+  - DRAM sizing honors `max_supported_sample_rate_hz` instead of only initial sample rate.
 
 ## Notes
 
