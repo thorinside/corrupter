@@ -979,6 +979,129 @@ bool TestRequiredDramUsesMaxSupportedRate() {
   return bytes_high > bytes_low;
 }
 
+bool TestAudioContextClampsToMaxSupportedRate() {
+  corrupter::EngineConfig cfg;
+  cfg.sample_rate_hz = 48000.0f;
+  cfg.max_supported_sample_rate_hz = 96000.0f;
+  cfg.max_block_frames = 128;
+  cfg.max_buffer_seconds = 5.0f;
+  cfg.random_seed = 707;
+
+  const size_t dram_bytes = corrupter::Engine::required_dram_bytes(cfg);
+  std::vector<uint8_t> dram(dram_bytes);
+  corrupter::Engine engine;
+  if (!engine.initialise(dram.data(), dram.size(), cfg)) {
+    return false;
+  }
+
+  engine.set_audio_context(192000.0f, 1024u);
+  corrupter::RuntimeInfo info{};
+  if (!engine.get_runtime_info(&info)) {
+    return false;
+  }
+  return NearEqual(info.sample_rate_hz, 96000.0f, 1e-3f) &&
+         (info.max_block_frames == 1024u);
+}
+
+bool TestExternalClockTimeoutStableAfterSampleRateChange() {
+  corrupter::internal::ClockEngine clock;
+  clock.Reset(48000.0f, 0.5f);
+  clock.SetInternalMode(false);
+
+  bool present_before = false;
+  bool present_at_timeout = true;
+  for (uint64_t s = 0; s <= 408000u; ++s) {
+    const bool pulse = (s == 0u) || (s == 48000u);
+    clock.Step(s, pulse);
+    if (s == 72000u) {
+      // SR changes halfway between external pulses.
+      clock.SetSampleRate(96000.0f, s);
+    }
+    if (s == 407999u) {
+      present_before = clock.ExternalSignalPresent();
+    }
+    if (s == 408000u) {
+      present_at_timeout = clock.ExternalSignalPresent();
+    }
+  }
+
+  return present_before && !present_at_timeout;
+}
+
+bool TestPersistentStateSanitisesInvalidEnums() {
+  corrupter::EngineConfig cfg;
+  cfg.sample_rate_hz = 96000.0f;
+  cfg.max_supported_sample_rate_hz = 96000.0f;
+  cfg.max_block_frames = 128;
+  cfg.max_buffer_seconds = 5.0f;
+  cfg.random_seed = 123;
+
+  const size_t dram_bytes = corrupter::Engine::required_dram_bytes(cfg);
+  std::vector<uint8_t> dram(dram_bytes);
+  corrupter::Engine engine;
+  if (!engine.initialise(dram.data(), dram.size(), cfg)) {
+    return false;
+  }
+
+  corrupter::PersistentState in;
+  in.corrupt_bank = static_cast<corrupter::CorruptBank>(255u);
+  in.corrupt_algorithm = static_cast<corrupter::CorruptAlgorithm>(255u);
+  in.glitch_window_01 = 0.5f;
+  engine.set_persistent_state(in);
+
+  corrupter::PersistentState out{};
+  if (!engine.get_persistent_state(&out)) {
+    return false;
+  }
+  return (out.corrupt_bank == corrupter::CorruptBank::kLegacy) &&
+         (out.corrupt_algorithm == corrupter::CorruptAlgorithm::kDecimate);
+}
+
+bool TestCApiGuardClauses() {
+  if (corrupter_engine_required_dram_bytes(nullptr) != 0u) {
+    return false;
+  }
+  if (corrupter_engine_construct(nullptr, 0u) != 0) {
+    return false;
+  }
+  if (corrupter_engine_initialise(nullptr, nullptr, 0u, nullptr) != 0) {
+    return false;
+  }
+  if (corrupter_engine_serialise_persistent_state(nullptr, nullptr, 0u, nullptr) != 0) {
+    return false;
+  }
+  if (corrupter_engine_deserialise_persistent_state(nullptr, nullptr, 0u) != 0) {
+    return false;
+  }
+
+  const size_t engine_bytes = corrupter_engine_sizeof();
+  if (engine_bytes == 0u) {
+    return false;
+  }
+  std::vector<uint8_t> engine_mem(engine_bytes, 0u);
+  if (!corrupter_engine_construct(engine_mem.data(), engine_mem.size())) {
+    return false;
+  }
+
+  if (corrupter_engine_initialise(engine_mem.data(), nullptr, 0u, nullptr) != 0) {
+    return false;
+  }
+
+  corrupter_engine_set_knobs(nullptr, nullptr);
+  corrupter_engine_set_persistent_state(nullptr, nullptr);
+  corrupter_engine_set_audio_context(nullptr, 0.0f, 0u);
+  corrupter_engine_set_clock_mode_internal(nullptr, 0);
+  corrupter_engine_process(nullptr, nullptr, nullptr, nullptr);
+  corrupter_engine_reset(nullptr);
+  corrupter_engine_destruct(nullptr);
+
+  corrupter_audio_block_t empty_audio{};
+  empty_audio.frames = 0u;
+  corrupter_engine_process(engine_mem.data(), &empty_audio, nullptr, nullptr);
+  corrupter_engine_destruct(engine_mem.data());
+  return true;
+}
+
 bool TestDropoutUsesSmoothEdges() {
   corrupter::internal::CorruptChannelState state{};
   corrupter::internal::XorShift32 rng;
@@ -1149,6 +1272,13 @@ int main() {
       {"freeze_latching_sync_to_clock", TestFreezeLatchingSyncToClock},
       {"runtime_audio_context_switch", TestRuntimeAudioContextSwitch},
       {"required_dram_uses_max_supported_rate", TestRequiredDramUsesMaxSupportedRate},
+      {"audio_context_clamps_max_supported_rate",
+       TestAudioContextClampsToMaxSupportedRate},
+      {"external_clock_timeout_stable_after_sr_change",
+       TestExternalClockTimeoutStableAfterSampleRateChange},
+      {"persistent_state_sanitises_invalid_enums",
+       TestPersistentStateSanitisesInvalidEnums},
+      {"c_api_guard_clauses", TestCApiGuardClauses},
       {"dropout_uses_smooth_edges", TestDropoutUsesSmoothEdges},
       {"dj_filter_tilt_response", TestDjFilterTiltResponse},
       {"vinyl_generates_surface_noise", TestVinylGeneratesSurfaceNoise},

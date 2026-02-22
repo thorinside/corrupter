@@ -55,6 +55,14 @@ ctest --test-dir /Users/nealsanche/nosuch/corrupter/build --output-on-failure
   - Runtime sample-rate/max-block updates are applied correctly without reinitialization.
 - `required_dram_uses_max_supported_rate`
   - DRAM sizing honors `max_supported_sample_rate_hz` instead of only initial sample rate.
+- `audio_context_clamps_max_supported_rate`
+  - Runtime audio-context sample rate is clamped to configured supported maximum.
+- `external_clock_timeout_stable_after_sr_change`
+  - External-clock loss timing remains stable when sample rate changes between pulses.
+- `persistent_state_sanitises_invalid_enums`
+  - Invalid persisted enum values are normalized to safe defaults.
+- `c_api_guard_clauses`
+  - C API null/invalid-argument guard branches return safely.
 - `dropout_uses_smooth_edges`
   - Legacy dropout transitions are ramped and avoid hard one-sample steps.
 - `dj_filter_tilt_response`

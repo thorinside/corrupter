@@ -43,6 +43,21 @@ void ClockEngine::SetSampleRate(float sample_rate_hz, uint64_t current_sample_in
     next_tick_sample_ = current_sample_index;
   }
 
+  if (have_external_pulse_) {
+    if (current_sample_index >= last_external_pulse_sample_) {
+      const uint64_t elapsed = current_sample_index - last_external_pulse_sample_;
+      const uint64_t scaled_elapsed =
+          static_cast<uint64_t>(std::max(0.0, static_cast<double>(elapsed) * ratio));
+      if (scaled_elapsed >= current_sample_index) {
+        last_external_pulse_sample_ = 0;
+      } else {
+        last_external_pulse_sample_ = current_sample_index - scaled_elapsed;
+      }
+    } else {
+      last_external_pulse_sample_ = current_sample_index;
+    }
+  }
+
   if (internal_mode_) {
     active_period_samples_ = ComputeInternalPeriodSamples();
   }

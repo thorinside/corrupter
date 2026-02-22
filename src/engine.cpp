@@ -168,6 +168,27 @@ uint32_t EffectiveMaxBlockFrames(const EngineConfig& cfg) {
   return std::max(1u, cfg.max_block_frames);
 }
 
+CorruptBank SanitiseCorruptBank(CorruptBank bank) {
+  switch (bank) {
+    case CorruptBank::kLegacy:
+    case CorruptBank::kExpanded:
+      return bank;
+  }
+  return CorruptBank::kLegacy;
+}
+
+CorruptAlgorithm SanitiseCorruptAlgorithm(CorruptAlgorithm algorithm) {
+  switch (algorithm) {
+    case CorruptAlgorithm::kDecimate:
+    case CorruptAlgorithm::kDropout:
+    case CorruptAlgorithm::kDestroy:
+    case CorruptAlgorithm::kDjFilter:
+    case CorruptAlgorithm::kVinylSim:
+      return algorithm;
+  }
+  return CorruptAlgorithm::kDecimate;
+}
+
 }  // namespace
 
 struct Engine::Impl {
@@ -359,6 +380,9 @@ struct Engine::Impl {
       channels[1].tape_flutter_depth = channels[0].tape_flutter_depth;
       channels[1].tape_drive = channels[0].tape_drive;
       channels[1].tape_color_coeff = channels[0].tape_color_coeff;
+      channels[1].tape_wow_phase = channels[0].tape_wow_phase;
+      channels[1].tape_flutter_phase = channels[0].tape_flutter_phase;
+      channels[1].rate_smoother.value = channels[0].rate_smoother.value;
       channels[1].rate_smoother.coeff = channels[0].rate_smoother.coeff;
     } else {
       apply_one(&channels[0]);
@@ -497,6 +521,8 @@ void Engine::set_persistent_state(const PersistentState& state) noexcept {
   }
 
   impl_->state = state;
+  impl_->state.corrupt_bank = SanitiseCorruptBank(impl_->state.corrupt_bank);
+  impl_->state.corrupt_algorithm = SanitiseCorruptAlgorithm(impl_->state.corrupt_algorithm);
   impl_->state.glitch_window_01 = internal::Clamp01(impl_->state.glitch_window_01);
 }
 
