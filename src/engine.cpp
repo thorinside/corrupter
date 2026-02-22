@@ -59,6 +59,12 @@ struct PlaybackChannelState {
   float tape_color_lp = 0.0f;
   internal::CorruptChannelState corrupt;
 
+  // Crossfade state for tick transitions
+  static constexpr uint32_t kXfadeSamples = 128;
+  uint32_t xfade_remaining = 0;      // samples left in crossfade (0 = inactive)
+  double xfade_read_index = 0.0;     // old segment read position at tick
+  float xfade_rate = 1.0f;           // old segment playback rate
+
   void Reset() {
     phase = 0.0;
     rate = 1.0f;
@@ -77,6 +83,9 @@ struct PlaybackChannelState {
     tape_color_lp = 0.0f;
     rate_smoother.Reset(1.0f);
     corrupt = {};
+    xfade_remaining = 0;
+    xfade_read_index = 0.0;
+    xfade_rate = 1.0f;
   }
 };
 
@@ -276,17 +285,42 @@ struct Engine::Impl {
       return 1.0f;
     }
 
+    constexpr float kPi = 3.14159265358979323846f;
+    constexpr float kMinFadeSamples = 64.0f;
+
     const float win_01 = internal::Clamp01(state.glitch_window_01);
     const float fade_ratio = 0.02f + 0.48f * win_01;
-    const float fade = std::max(1.0f, fade_ratio * static_cast<float>(subsection_len));
+    const float fade = std::max(kMinFadeSamples,
+        fade_ratio * static_cast<float>(subsection_len));
 
     const float from_start = static_cast<float>(phase) / fade;
     const float from_end =
         (static_cast<float>(subsection_len) - static_cast<float>(phase) - 1.0f) / fade;
-    return internal::Clamp(std::min(from_start, from_end), 0.0f, 1.0f);
+    const float t = internal::Clamp(std::min(from_start, from_end), 0.0f, 1.0f);
+    // Raised cosine: smooth at both ends, no slope discontinuity
+    return 0.5f - 0.5f * std::cos(kPi * t);
   }
 
   void UpdateSegmentOnTick(float repeats_01) {
+    // Snapshot current read positions for crossfade before changing segment
+    for (auto& ch : channels) {
+      const uint32_t sub_idx =
+          std::min(ch.subsection_index,
+                   std::max(uint32_t{1}, segment.repeats) - uint32_t{1});
+      const uint32_t sub_len = std::max(
+          uint32_t{1},
+          segment.subsection_length / std::max(uint32_t{1}, ch.repeat_scale));
+      const uint32_t subsection_start =
+          (segment.start + sub_idx * segment.subsection_length) % buffer_frames;
+      double read_pos = ch.phase;
+      if (ch.reverse) {
+        read_pos = static_cast<double>(sub_len > 0 ? sub_len - 1u : 0u) - read_pos;
+      }
+      ch.xfade_read_index = static_cast<double>(subsection_start) + read_pos;
+      ch.xfade_rate = ch.rate_smoother.value;
+      ch.xfade_remaining = PlaybackChannelState::kXfadeSamples;
+    }
+
     const uint32_t period =
         static_cast<uint32_t>(std::max(1.0f, clock.CurrentPeriodSamples()));
     segment.length = std::min(std::max(uint32_t{1}, period), buffer_frames);
@@ -799,12 +833,26 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
       const float window = impl_->ComputeWindowGain(pcs.phase, sub_len);
       wet *= window;
 
+      // Crossfade from old segment on tick transitions
+      if (pcs.xfade_remaining > 0u) {
+        const float old_wet = ReadBufferCubic(buffer, impl_->buffer_frames, pcs.xfade_read_index);
+        const float xf = static_cast<float>(pcs.xfade_remaining) /
+                         static_cast<float>(PlaybackChannelState::kXfadeSamples);
+        wet = wet * (1.0f - xf) + old_wet * xf;
+        pcs.xfade_read_index += static_cast<double>(pcs.xfade_rate);
+        pcs.xfade_remaining--;
+      }
+
       if (pcs.silence_duty > 0.0f) {
         const double silence_from =
             static_cast<double>(1.0f - internal::Clamp01(pcs.silence_duty)) *
             static_cast<double>(sub_len);
         if (pcs.phase >= silence_from) {
-          wet = 0.0f;
+          // Fade into silence over 64 samples to avoid clicks
+          constexpr float kSilenceFade = 64.0f;
+          const float into_silence = static_cast<float>(pcs.phase - silence_from);
+          const float fade = 1.0f - internal::Clamp01(into_silence / kSilenceFade);
+          wet *= fade;
         }
       }
 
