@@ -36,6 +36,25 @@ inline float WrapPositive(float x, float n) {
   while (x < 0.0f) {
     x += n;
   }
+  if (x >= n) {
+    x = 0.0f;
+  }
+  return x;
+}
+
+inline double WrapPositive(double x, double n) {
+  if (n <= 0.0) {
+    return 0.0;
+  }
+  while (x >= n) {
+    x -= n;
+  }
+  while (x < 0.0) {
+    x += n;
+  }
+  if (x >= n) {
+    x = 0.0;
+  }
   return x;
 }
 

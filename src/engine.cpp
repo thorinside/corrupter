@@ -41,7 +41,7 @@ struct OnePole {
 };
 
 struct PlaybackChannelState {
-  float phase = 0.0f;
+  double phase = 0.0;
   float rate = 1.0f;
   uint32_t subsection_index = 0;
   uint32_t repeat_scale = 1;
@@ -60,7 +60,7 @@ struct PlaybackChannelState {
   internal::CorruptChannelState corrupt;
 
   void Reset() {
-    phase = 0.0f;
+    phase = 0.0;
     rate = 1.0f;
     subsection_index = 0;
     repeat_scale = 1;
@@ -89,15 +89,15 @@ struct SegmentState {
 
 constexpr float kTwoPi = 6.28318530717958647693f;
 
-float ReadBufferLinear(const float* buffer, uint32_t buffer_frames, float index) {
+float ReadBufferLinear(const float* buffer, uint32_t buffer_frames, double index) {
   if (!buffer || buffer_frames == 0) {
     return 0.0f;
   }
 
-  const float wrapped = internal::WrapPositive(index, static_cast<float>(buffer_frames));
+  const double wrapped = internal::WrapPositive(index, static_cast<double>(buffer_frames));
   const uint32_t i0 = static_cast<uint32_t>(wrapped);
   const uint32_t i1 = (i0 + 1u) % buffer_frames;
-  const float frac = wrapped - static_cast<float>(i0);
+  const float frac = static_cast<float>(wrapped - static_cast<double>(i0));
   return buffer[i0] + (buffer[i1] - buffer[i0]) * frac;
 }
 
@@ -109,7 +109,7 @@ float Hermite4(float y0, float y1, float y2, float y3, float t) {
   return ((c3 * t + c2) * t + c1) * t + c0;
 }
 
-float ReadBufferCubic(const float* buffer, uint32_t buffer_frames, float index) {
+float ReadBufferCubic(const float* buffer, uint32_t buffer_frames, double index) {
   if (!buffer || buffer_frames == 0u) {
     return 0.0f;
   }
@@ -117,12 +117,12 @@ float ReadBufferCubic(const float* buffer, uint32_t buffer_frames, float index) 
     return ReadBufferLinear(buffer, buffer_frames, index);
   }
 
-  const float wrapped = internal::WrapPositive(index, static_cast<float>(buffer_frames));
+  const double wrapped = internal::WrapPositive(index, static_cast<double>(buffer_frames));
   const uint32_t i1 = static_cast<uint32_t>(wrapped);
   const uint32_t i0 = (i1 + buffer_frames - 1u) % buffer_frames;
   const uint32_t i2 = (i1 + 1u) % buffer_frames;
   const uint32_t i3 = (i1 + 2u) % buffer_frames;
-  const float t = wrapped - static_cast<float>(i1);
+  const float t = static_cast<float>(wrapped - static_cast<double>(i1));
 
   const float y0 = buffer[i0];
   const float y1 = buffer[i1];
@@ -271,7 +271,7 @@ struct Engine::Impl {
     return 1u + static_cast<uint32_t>(internal::Clamp01(repeats_01) * 31.0f);
   }
 
-  float ComputeWindowGain(float phase, uint32_t subsection_len) const {
+  float ComputeWindowGain(double phase, uint32_t subsection_len) const {
     if (subsection_len <= 1u) {
       return 1.0f;
     }
@@ -280,9 +280,9 @@ struct Engine::Impl {
     const float fade_ratio = 0.02f + 0.48f * win_01;
     const float fade = std::max(1.0f, fade_ratio * static_cast<float>(subsection_len));
 
-    const float from_start = phase / fade;
+    const float from_start = static_cast<float>(phase) / fade;
     const float from_end =
-        (static_cast<float>(subsection_len) - phase - 1.0f) / fade;
+        (static_cast<float>(subsection_len) - static_cast<float>(phase) - 1.0f) / fade;
     return internal::Clamp(std::min(from_start, from_end), 0.0f, 1.0f);
   }
 
@@ -296,7 +296,7 @@ struct Engine::Impl {
         std::max(1u, segment.length / std::max(1u, segment.repeats));
 
     for (auto& ch : channels) {
-      ch.phase = 0.0f;
+      ch.phase = 0.0;
     }
   }
 
@@ -712,8 +712,8 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
 
     if (impl_->state.corrupt_gate_is_reset && corrupt_rise) {
       impl_->write_idx = 0;
-      impl_->channels[0].phase = 0.0f;
-      impl_->channels[1].phase = 0.0f;
+      impl_->channels[0].phase = 0.0;
+      impl_->channels[1].phase = 0.0;
     }
 
     const float time_eff =
@@ -788,21 +788,21 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
       const uint32_t subsection_start =
           (impl_->segment.start + sub_idx * impl_->segment.subsection_length) % impl_->buffer_frames;
 
-      float read_pos = pcs.phase;
+      double read_pos = pcs.phase;
       if (pcs.reverse) {
-        read_pos = static_cast<float>(sub_len - 1u) - read_pos;
+        read_pos = static_cast<double>(sub_len - 1u) - read_pos;
       }
 
-      const float read_index = static_cast<float>(subsection_start) + read_pos;
+      const double read_index = static_cast<double>(subsection_start) + read_pos;
       float wet = ReadBufferCubic(buffer, impl_->buffer_frames, read_index);
 
       const float window = impl_->ComputeWindowGain(pcs.phase, sub_len);
       wet *= window;
 
       if (pcs.silence_duty > 0.0f) {
-        const float silence_from =
-            (1.0f - internal::Clamp01(pcs.silence_duty)) *
-            static_cast<float>(sub_len);
+        const double silence_from =
+            static_cast<double>(1.0f - internal::Clamp01(pcs.silence_duty)) *
+            static_cast<double>(sub_len);
         if (pcs.phase >= silence_from) {
           wet = 0.0f;
         }
@@ -822,10 +822,10 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
             &pcs.corrupt, &impl_->rng, impl_->runtime_sample_rate_hz);
       }
 
-      pcs.phase += smooth_rate;
-      if (pcs.phase >= static_cast<float>(sub_len)) {
+      pcs.phase += static_cast<double>(smooth_rate);
+      if (pcs.phase >= static_cast<double>(sub_len)) {
         pcs.phase = internal::WrapPositive(
-            pcs.phase, static_cast<float>(sub_len));
+            pcs.phase, static_cast<double>(sub_len));
       }
 
       const float mix_cv = CvOrZero(cv.mix_v, i) * 0.2f;
