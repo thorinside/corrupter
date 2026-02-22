@@ -55,6 +55,14 @@ ctest --test-dir /Users/nealsanche/nosuch/corrupter/build --output-on-failure
   - Runtime sample-rate/max-block updates are applied correctly without reinitialization.
 - `required_dram_uses_max_supported_rate`
   - DRAM sizing honors `max_supported_sample_rate_hz` instead of only initial sample rate.
+- `dropout_uses_smooth_edges`
+  - Legacy dropout transitions are ramped and avoid hard one-sample steps.
+- `dj_filter_tilt_response`
+  - Expanded DJ filter sweeps from LP emphasis to HP emphasis.
+- `vinyl_generates_surface_noise`
+  - Expanded vinyl model emits bounded non-zero surface texture on silence.
+- `corrupt_algorithms_finite_at_extremes`
+  - Corrupt algorithms remain finite and bounded at extreme intensities.
 
 ## Notes
 
@@ -62,3 +70,15 @@ ctest --test-dir /Users/nealsanche/nosuch/corrupter/build --output-on-failure
 - The disting NT wrapper reference in
   `/Users/nealsanche/nosuch/corrupter/examples/distingnt_wrapper_reference.cpp`
   is not built by default in this repository because `distingNT_API` headers are external.
+
+## Coverage
+
+Coverage instrumentation can be enabled with:
+
+```bash
+cmake -S /Users/nealsanche/nosuch/corrupter -B /Users/nealsanche/nosuch/corrupter/build-coverage -DCORRUPTER_ENABLE_COVERAGE=ON
+cmake --build /Users/nealsanche/nosuch/corrupter/build-coverage
+cmake --build /Users/nealsanche/nosuch/corrupter/build-coverage --target corrupter_dsp_coverage
+```
+
+On Clang toolchains, the `corrupter_dsp_coverage` target runs the regression suite and prints an `llvm-cov report` summary.

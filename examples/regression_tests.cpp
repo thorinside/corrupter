@@ -9,8 +9,11 @@
 #include "corrupter_dsp/c_api.h"
 #include "corrupter_dsp/engine.h"
 #include "internal/clock_engine.h"
+#include "internal/corrupt_engine.h"
 
 namespace {
+
+constexpr double kPi = 3.14159265358979323846;
 
 struct StereoBuffers {
   std::vector<float> in_l;
@@ -82,6 +85,14 @@ bool NearRatio(float a, float b, float rel_tol = 0.08f) {
   }
   const float ratio = a / b;
   return std::fabs(ratio - 1.0f) <= rel_tol;
+}
+
+float ToneAmplitude(double sin_acc, double cos_acc, uint32_t n) {
+  if (n == 0u) {
+    return 0.0f;
+  }
+  const double scale = 2.0 / static_cast<double>(n);
+  return static_cast<float>(scale * std::sqrt(sin_acc * sin_acc + cos_acc * cos_acc));
 }
 
 const float* VecPtr(const std::vector<float>& v, uint32_t frames) {
@@ -968,6 +979,149 @@ bool TestRequiredDramUsesMaxSupportedRate() {
   return bytes_high > bytes_low;
 }
 
+bool TestDropoutUsesSmoothEdges() {
+  corrupter::internal::CorruptChannelState state{};
+  corrupter::internal::XorShift32 rng;
+  rng.Seed(303u);
+
+  constexpr float kSr = 96000.0f;
+  constexpr uint32_t kSamples = 300000u;
+  float prev = 1.0f;
+  float max_delta = 0.0f;
+  bool saw_dropout = false;
+
+  for (uint32_t i = 0; i < kSamples; ++i) {
+    const float y = corrupter::internal::ProcessCorruptSample(
+        1.0f, 1.0f, corrupter::CorruptBank::kLegacy,
+        corrupter::CorruptAlgorithm::kDropout, &state, &rng, kSr);
+    if (!std::isfinite(y)) {
+      return false;
+    }
+    saw_dropout = saw_dropout || (y < 0.05f);
+    max_delta = std::max(max_delta, std::fabs(y - prev));
+    prev = y;
+  }
+
+  return saw_dropout && (max_delta < 0.08f);
+}
+
+bool TestDjFilterTiltResponse() {
+  auto run_case = [](float intensity, float* low_amp, float* high_amp) {
+    if (!low_amp || !high_amp) {
+      return false;
+    }
+    corrupter::internal::CorruptChannelState state{};
+    corrupter::internal::XorShift32 rng;
+    rng.Seed(404u);
+
+    constexpr float kSr = 96000.0f;
+    constexpr float kLowHz = 130.0f;
+    constexpr float kHighHz = 5600.0f;
+    constexpr uint32_t kTotal = 96000u;
+    constexpr uint32_t kWarmup = 12000u;
+    double low_sin = 0.0;
+    double low_cos = 0.0;
+    double high_sin = 0.0;
+    double high_cos = 0.0;
+    uint32_t measured = 0u;
+
+    for (uint32_t i = 0; i < kTotal; ++i) {
+      const double t = static_cast<double>(i) / static_cast<double>(kSr);
+      const float x = static_cast<float>(0.70 * std::sin(2.0 * kPi * kLowHz * t) +
+                                         0.70 * std::sin(2.0 * kPi * kHighHz * t));
+      const float y = corrupter::internal::ProcessCorruptSample(
+          x, intensity, corrupter::CorruptBank::kExpanded,
+          corrupter::CorruptAlgorithm::kDjFilter, &state, &rng, kSr);
+      if (!std::isfinite(y)) {
+        return false;
+      }
+      if (i >= kWarmup) {
+        const double p_low = 2.0 * kPi * kLowHz * t;
+        const double p_high = 2.0 * kPi * kHighHz * t;
+        low_sin += static_cast<double>(y) * std::sin(p_low);
+        low_cos += static_cast<double>(y) * std::cos(p_low);
+        high_sin += static_cast<double>(y) * std::sin(p_high);
+        high_cos += static_cast<double>(y) * std::cos(p_high);
+        ++measured;
+      }
+    }
+
+    *low_amp = ToneAmplitude(low_sin, low_cos, measured);
+    *high_amp = ToneAmplitude(high_sin, high_cos, measured);
+    return true;
+  };
+
+  float lp_low = 0.0f;
+  float lp_high = 0.0f;
+  float hp_low = 0.0f;
+  float hp_high = 0.0f;
+  if (!run_case(0.05f, &lp_low, &lp_high)) {
+    return false;
+  }
+  if (!run_case(0.95f, &hp_low, &hp_high)) {
+    return false;
+  }
+
+  return (lp_low > (lp_high * 1.6f)) && (hp_high > (hp_low * 1.6f));
+}
+
+bool TestVinylGeneratesSurfaceNoise() {
+  corrupter::internal::CorruptChannelState state{};
+  corrupter::internal::XorShift32 rng;
+  rng.Seed(505u);
+
+  constexpr float kSr = 96000.0f;
+  constexpr uint32_t kSamples = 96000u;
+  double energy = 0.0;
+  float peak = 0.0f;
+  for (uint32_t i = 0; i < kSamples; ++i) {
+    const float y = corrupter::internal::ProcessCorruptSample(
+        0.0f, 0.9f, corrupter::CorruptBank::kExpanded,
+        corrupter::CorruptAlgorithm::kVinylSim, &state, &rng, kSr);
+    if (!std::isfinite(y)) {
+      return false;
+    }
+    energy += static_cast<double>(y) * static_cast<double>(y);
+    peak = std::max(peak, std::fabs(y));
+  }
+  const float rms = static_cast<float>(std::sqrt(energy / static_cast<double>(kSamples)));
+  return (rms > 0.0005f) && (peak < 1.5f);
+}
+
+bool TestCorruptAlgorithmsFiniteAtExtremes() {
+  struct AlgoCase {
+    corrupter::CorruptBank bank;
+    corrupter::CorruptAlgorithm algo;
+  };
+  const AlgoCase cases[] = {
+      {corrupter::CorruptBank::kLegacy, corrupter::CorruptAlgorithm::kDecimate},
+      {corrupter::CorruptBank::kLegacy, corrupter::CorruptAlgorithm::kDropout},
+      {corrupter::CorruptBank::kLegacy, corrupter::CorruptAlgorithm::kDestroy},
+      {corrupter::CorruptBank::kExpanded, corrupter::CorruptAlgorithm::kDjFilter},
+      {corrupter::CorruptBank::kExpanded, corrupter::CorruptAlgorithm::kVinylSim},
+  };
+  const float intensities[] = {0.0f, 0.5f, 1.0f};
+
+  for (const AlgoCase& c : cases) {
+    for (float intensity : intensities) {
+      corrupter::internal::CorruptChannelState state{};
+      corrupter::internal::XorShift32 rng;
+      rng.Seed(606u + static_cast<uint32_t>(static_cast<int>(intensity * 10.0f)));
+      constexpr float kSr = 96000.0f;
+      for (uint32_t i = 0; i < 40000u; ++i) {
+        const float x = 0.95f * std::sin(0.0019f * static_cast<float>(i)) +
+                        0.45f * rng.NextSigned();
+        const float y = corrupter::internal::ProcessCorruptSample(
+            x, intensity, c.bank, c.algo, &state, &rng, kSr);
+        if (!std::isfinite(y) || std::fabs(y) > 8.0f) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 int main() {
@@ -995,6 +1149,10 @@ int main() {
       {"freeze_latching_sync_to_clock", TestFreezeLatchingSyncToClock},
       {"runtime_audio_context_switch", TestRuntimeAudioContextSwitch},
       {"required_dram_uses_max_supported_rate", TestRequiredDramUsesMaxSupportedRate},
+      {"dropout_uses_smooth_edges", TestDropoutUsesSmoothEdges},
+      {"dj_filter_tilt_response", TestDjFilterTiltResponse},
+      {"vinyl_generates_surface_noise", TestVinylGeneratesSurfaceNoise},
+      {"corrupt_algorithms_finite_at_extremes", TestCorruptAlgorithmsFiniteAtExtremes},
   };
 
   int failures = 0;
