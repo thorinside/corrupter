@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <new>
 
 #include "internal/clock_engine.h"
@@ -166,6 +167,31 @@ float EffectiveMaxSampleRate(const EngineConfig& cfg) {
 
 uint32_t EffectiveMaxBlockFrames(const EngineConfig& cfg) {
   return std::max(1u, cfg.max_block_frames);
+}
+
+bool ComputeBufferFrames(float sample_rate_hz, float buffer_seconds, uint32_t* out) {
+  if (!out || !(sample_rate_hz > 0.0f) || !(buffer_seconds > 0.0f)) {
+    return false;
+  }
+  const double frames_f64 =
+      std::ceil(static_cast<double>(sample_rate_hz) * static_cast<double>(buffer_seconds));
+  if (!std::isfinite(frames_f64) || frames_f64 < 1.0 ||
+      frames_f64 > static_cast<double>(std::numeric_limits<uint32_t>::max())) {
+    return false;
+  }
+  *out = static_cast<uint32_t>(frames_f64);
+  return true;
+}
+
+bool SafeAddSize(size_t a, size_t b, size_t* out) {
+  if (!out) {
+    return false;
+  }
+  if (a > (std::numeric_limits<size_t>::max() - b)) {
+    return false;
+  }
+  *out = a + b;
+  return true;
 }
 
 CorruptBank SanitiseCorruptBank(CorruptBank bank) {
@@ -403,12 +429,27 @@ size_t Engine::required_dram_bytes(const EngineConfig& cfg) noexcept {
   }
 
   const float max_sample_rate_hz = EffectiveMaxSampleRate(cfg);
-  const double frames_f64 =
-      static_cast<double>(max_sample_rate_hz) * static_cast<double>(cfg.max_buffer_seconds);
-  const size_t frames = static_cast<size_t>(std::ceil(frames_f64));
+  uint32_t frames_u32 = 0u;
+  if (!ComputeBufferFrames(max_sample_rate_hz, cfg.max_buffer_seconds, &frames_u32)) {
+    return 0;
+  }
+  const size_t frames = static_cast<size_t>(frames_u32);
+  if (frames > (std::numeric_limits<size_t>::max() / (2u * sizeof(float)))) {
+    return 0;
+  }
   const size_t audio_bytes = frames * 2u * sizeof(float);
   const size_t state_bytes = sizeof(Impl);
-  return state_bytes + internal::kAlignment + audio_bytes + internal::kAlignment;
+  size_t total = 0u;
+  if (!SafeAddSize(state_bytes, internal::kAlignment, &total)) {
+    return 0;
+  }
+  if (!SafeAddSize(total, audio_bytes, &total)) {
+    return 0;
+  }
+  if (!SafeAddSize(total, internal::kAlignment, &total)) {
+    return 0;
+  }
+  return total;
 }
 
 bool Engine::initialise(void* dram, size_t dram_bytes, const EngineConfig& cfg) noexcept {
@@ -429,9 +470,13 @@ bool Engine::initialise(void* dram, size_t dram_bytes, const EngineConfig& cfg) 
   impl_->cfg.sample_rate_hz = EffectiveInitialSampleRate(cfg);
   impl_->cfg.max_supported_sample_rate_hz = EffectiveMaxSampleRate(cfg);
   impl_->cfg.max_block_frames = EffectiveMaxBlockFrames(cfg);
-  impl_->buffer_frames = static_cast<uint32_t>(
-      std::max(1.0, std::ceil(static_cast<double>(impl_->cfg.max_supported_sample_rate_hz) *
-                              static_cast<double>(cfg.max_buffer_seconds))));
+  uint32_t buffer_frames = 0u;
+  if (!ComputeBufferFrames(impl_->cfg.max_supported_sample_rate_hz, cfg.max_buffer_seconds,
+                           &buffer_frames)) {
+    impl_ = nullptr;
+    return false;
+  }
+  impl_->buffer_frames = buffer_frames;
   impl_->runtime_sample_rate_hz = impl_->cfg.sample_rate_hz;
   impl_->runtime_max_block_frames = impl_->cfg.max_block_frames;
 

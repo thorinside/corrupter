@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -1102,6 +1103,24 @@ bool TestCApiGuardClauses() {
   return true;
 }
 
+bool TestRequiredDramRejectsInvalidLargeConfig() {
+  corrupter::EngineConfig cfg;
+  cfg.sample_rate_hz = 96000.0f;
+  cfg.max_supported_sample_rate_hz = 96000.0f;
+  cfg.max_block_frames = 128u;
+  cfg.max_buffer_seconds = std::numeric_limits<float>::infinity();
+  cfg.random_seed = 1u;
+
+  const size_t bytes = corrupter::Engine::required_dram_bytes(cfg);
+  if (bytes != 0u) {
+    return false;
+  }
+
+  std::vector<uint8_t> dram(256u, 0u);
+  corrupter::Engine engine;
+  return !engine.initialise(dram.data(), dram.size(), cfg);
+}
+
 bool TestDropoutUsesSmoothEdges() {
   corrupter::internal::CorruptChannelState state{};
   corrupter::internal::XorShift32 rng;
@@ -1279,6 +1298,8 @@ int main() {
       {"persistent_state_sanitises_invalid_enums",
        TestPersistentStateSanitisesInvalidEnums},
       {"c_api_guard_clauses", TestCApiGuardClauses},
+      {"required_dram_rejects_invalid_large_config",
+       TestRequiredDramRejectsInvalidLargeConfig},
       {"dropout_uses_smooth_edges", TestDropoutUsesSmoothEdges},
       {"dj_filter_tilt_response", TestDjFilterTiltResponse},
       {"vinyl_generates_surface_noise", TestVinylGeneratesSurfaceNoise},

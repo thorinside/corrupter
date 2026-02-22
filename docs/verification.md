@@ -63,6 +63,8 @@ ctest --test-dir /Users/nealsanche/nosuch/corrupter/build --output-on-failure
   - Invalid persisted enum values are normalized to safe defaults.
 - `c_api_guard_clauses`
   - C API null/invalid-argument guard branches return safely.
+- `required_dram_rejects_invalid_large_config`
+  - Memory sizing rejects non-finite/overflow-prone configurations.
 - `dropout_uses_smooth_edges`
   - Legacy dropout transitions are ramped and avoid hard one-sample steps.
 - `dj_filter_tilt_response`
