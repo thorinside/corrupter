@@ -286,7 +286,7 @@ struct Engine::Impl {
     }
 
     constexpr float kPi = 3.14159265358979323846f;
-    constexpr float kMinFadeSamples = 64.0f;
+    constexpr float kMinFadeSamples = 16.0f;
 
     const float win_01 = internal::Clamp01(state.glitch_window_01);
     const float fade_ratio = 0.02f + 0.48f * win_01;
@@ -848,8 +848,8 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
             static_cast<double>(1.0f - internal::Clamp01(pcs.silence_duty)) *
             static_cast<double>(sub_len);
         if (pcs.phase >= silence_from) {
-          // Fade into silence over 64 samples to avoid clicks
-          constexpr float kSilenceFade = 64.0f;
+          // Short 8-sample fade to avoid the hardest clicks but keep the punch
+          constexpr float kSilenceFade = 8.0f;
           const float into_silence = static_cast<float>(pcs.phase - silence_from);
           const float fade = 1.0f - internal::Clamp01(into_silence / kSilenceFade);
           wet *= fade;
