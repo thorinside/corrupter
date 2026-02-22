@@ -166,7 +166,7 @@ float EffectiveMaxSampleRate(const EngineConfig& cfg) {
 }
 
 uint32_t EffectiveMaxBlockFrames(const EngineConfig& cfg) {
-  return std::max(1u, cfg.max_block_frames);
+  return std::max(uint32_t{1}, cfg.max_block_frames);
 }
 
 bool ComputeBufferFrames(float sample_rate_hz, float buffer_seconds, uint32_t* out) {
@@ -254,7 +254,7 @@ struct Engine::Impl {
   void ResetPlayback() {
     segment = {};
     segment.start = 0;
-    segment.length = std::max(1u, static_cast<uint32_t>(clock.CurrentPeriodSamples()));
+    segment.length = std::max(uint32_t{1}, static_cast<uint32_t>(clock.CurrentPeriodSamples()));
     segment.repeats = 1;
     segment.subsection_length = segment.length;
     channels[0].Reset();
@@ -289,11 +289,11 @@ struct Engine::Impl {
   void UpdateSegmentOnTick(float repeats_01) {
     const uint32_t period =
         static_cast<uint32_t>(std::max(1.0f, clock.CurrentPeriodSamples()));
-    segment.length = std::min(std::max(1u, period), buffer_frames);
+    segment.length = std::min(std::max(uint32_t{1}, period), buffer_frames);
     segment.start = (write_idx + buffer_frames - segment.length) % buffer_frames;
     segment.repeats = ComputeRepeats(repeats_01);
     segment.subsection_length =
-        std::max(1u, segment.length / std::max(1u, segment.repeats));
+        std::max(uint32_t{1}, segment.length / std::max(uint32_t{1}, segment.repeats));
 
     for (auto& ch : channels) {
       ch.phase = 0.0;
@@ -782,9 +782,9 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
       }
 
       const uint32_t sub_idx =
-          std::min(pcs.subsection_index, std::max(1u, impl_->segment.repeats) - 1u);
+          std::min(pcs.subsection_index, std::max(uint32_t{1}, impl_->segment.repeats) - uint32_t{1});
       const uint32_t sub_len = std::max(
-          1u, impl_->segment.subsection_length / std::max(1u, pcs.repeat_scale));
+          uint32_t{1}, impl_->segment.subsection_length / std::max(uint32_t{1}, pcs.repeat_scale));
       const uint32_t subsection_start =
           (impl_->segment.start + sub_idx * impl_->segment.subsection_length) % impl_->buffer_frames;
 

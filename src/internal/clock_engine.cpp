@@ -36,8 +36,8 @@ void ClockEngine::SetSampleRate(float sample_rate_hz, uint64_t current_sample_in
   active_period_samples_ = std::max(1.0f, active_period_samples_ * ratio);
 
   if (next_tick_sample_ > current_sample_index) {
-    const uint64_t remaining = next_tick_sample_ - current_sample_index;
-    const uint64_t scaled = static_cast<uint64_t>(std::max(1.0, static_cast<double>(remaining) * ratio));
+    const uint32_t remaining = static_cast<uint32_t>(next_tick_sample_ - current_sample_index);
+    const uint32_t scaled = static_cast<uint32_t>(std::max(1.0f, static_cast<float>(remaining) * ratio));
     next_tick_sample_ = current_sample_index + scaled;
   } else {
     next_tick_sample_ = current_sample_index;
@@ -45,10 +45,10 @@ void ClockEngine::SetSampleRate(float sample_rate_hz, uint64_t current_sample_in
 
   if (have_external_pulse_) {
     if (current_sample_index >= last_external_pulse_sample_) {
-      const uint64_t elapsed = current_sample_index - last_external_pulse_sample_;
-      const uint64_t scaled_elapsed =
-          static_cast<uint64_t>(std::max(0.0, static_cast<double>(elapsed) * ratio));
-      if (scaled_elapsed >= current_sample_index) {
+      const uint32_t elapsed = static_cast<uint32_t>(current_sample_index - last_external_pulse_sample_);
+      const uint32_t scaled_elapsed =
+          static_cast<uint32_t>(std::max(0.0f, static_cast<float>(elapsed) * ratio));
+      if (scaled_elapsed >= static_cast<uint32_t>(current_sample_index)) {
         last_external_pulse_sample_ = 0;
       } else {
         last_external_pulse_sample_ = current_sample_index - scaled_elapsed;
@@ -90,7 +90,7 @@ bool ClockEngine::Step(uint64_t sample_index, bool external_pulse) {
     active_period_samples_ = period;
     if (sample_index >= next_tick_sample_) {
       tick = true;
-      next_tick_sample_ = sample_index + static_cast<uint64_t>(std::max(1.0f, period));
+      next_tick_sample_ = sample_index + static_cast<uint32_t>(std::max(1.0f, period));
     }
     return tick;
   }
@@ -105,7 +105,7 @@ bool ClockEngine::Step(uint64_t sample_index, bool external_pulse) {
       active_period_samples_ = std::max(1.0f, external_period_samples_ / mult);
       next_tick_sample_ = sample_index;
     } else {
-      const uint64_t elapsed = sample_index - last_external_pulse_sample_;
+      const uint32_t elapsed = static_cast<uint32_t>(sample_index - last_external_pulse_sample_);
       external_period_samples_ = std::max(1.0f, static_cast<float>(elapsed));
       last_external_pulse_sample_ = sample_index;
       external_signal_present_ = true;
@@ -113,8 +113,8 @@ bool ClockEngine::Step(uint64_t sample_index, bool external_pulse) {
       const float mult = ExternalRateMultiplier(time_01_);
       active_period_samples_ = std::max(1.0f, external_period_samples_ / mult);
 
-      const uint64_t period_u =
-          static_cast<uint64_t>(std::max(1.0f, active_period_samples_));
+      const uint32_t period_u =
+          static_cast<uint32_t>(std::max(1.0f, active_period_samples_));
       if (sample_index > next_tick_sample_ &&
           (sample_index - next_tick_sample_) > (period_u / 2u)) {
         next_tick_sample_ = sample_index;
@@ -126,8 +126,8 @@ bool ClockEngine::Step(uint64_t sample_index, bool external_pulse) {
   }
 
   if (have_external_pulse_) {
-    const uint64_t timeout =
-        static_cast<uint64_t>(std::max(1.0f, external_period_samples_ * 4.0f));
+    const uint32_t timeout =
+        static_cast<uint32_t>(std::max(1.0f, external_period_samples_ * 4.0f));
     if ((sample_index - last_external_pulse_sample_) >= timeout) {
       external_signal_present_ = false;
     }
@@ -135,8 +135,8 @@ bool ClockEngine::Step(uint64_t sample_index, bool external_pulse) {
 
   if (sample_index >= next_tick_sample_) {
     tick = true;
-    const uint64_t period_u =
-        static_cast<uint64_t>(std::max(1.0f, CurrentPeriodSamples()));
+    const uint32_t period_u =
+        static_cast<uint32_t>(std::max(1.0f, CurrentPeriodSamples()));
     next_tick_sample_ += period_u;
     if (next_tick_sample_ <= sample_index) {
       next_tick_sample_ = sample_index + period_u;
@@ -161,7 +161,7 @@ float ClockEngine::ExternalRateMultiplier(float time_01) {
 float ClockEngine::ComputeInternalPeriodSamples() const {
   const float log_min = std::log(kMinInternalPeriodSeconds);
   const float log_max = std::log(kMaxInternalPeriodSeconds);
-  const float seconds = std::exp(log_max + (log_min - log_max) * Clamp01(time_01_));
+  const float seconds = std::exp(log_min + (log_max - log_min) * Clamp01(time_01_));
   return std::max(1.0f, seconds * sample_rate_hz_);
 }
 

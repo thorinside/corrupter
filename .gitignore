@@ -1,2 +1,4 @@
 build/
 build-coverage/
+nt/build/
+nt/plugins/

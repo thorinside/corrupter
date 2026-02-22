@@ -76,7 +76,7 @@ float ProcessCorruptSample(float x, float intensity, CorruptBank bank, CorruptAl
         }
 
         if (state->dropout_ramp_remaining > 0u) {
-          const float denom = static_cast<float>(std::max(1u, state->dropout_ramp_samples));
+          const float denom = static_cast<float>(std::max(uint32_t{1}, state->dropout_ramp_samples));
           const float remaining = static_cast<float>(state->dropout_ramp_remaining);
           const float t = 1.0f - (remaining / denom);
           const float shaped = 0.5f - 0.5f * std::cos(kPi * Clamp01(t));
