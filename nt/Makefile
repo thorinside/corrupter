@@ -9,7 +9,7 @@ PROJECT = corrupter
 
 # Paths
 CORRUPTER_ROOT = ..
-DISTINGNT_API = ../../nt_emu/external/distingNT_API
+DISTINGNT_API ?= ../../nt_emu/external/distingNT_API
 
 # Source files
 NT_SOURCES = corrupter_nt.cpp

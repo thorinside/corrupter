@@ -1,0 +1,51 @@
+name: Build and Release Corrupter Plugin
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install ARM toolchain
+        run: |
+          brew update
+          brew install --cask gcc-arm-embedded
+
+      - name: Verify installation
+        run: arm-none-eabi-g++ --version
+
+      - name: Build plugin
+        run: |
+          cd nt
+          make clean
+          make hardware DISTINGNT_API=../distingNT_API
+
+      - name: Prepare release archive
+        run: |
+          mkdir -p release/programs/plug-ins/corrupter
+          cp nt/plugins/corrupter.o release/programs/plug-ins/corrupter/
+          cd release
+          zip -r ../corrupter-plugin.zip programs
+          cd ..
+          echo "Archive contents:"
+          unzip -l corrupter-plugin.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: corrupter-plugin.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
