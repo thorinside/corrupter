@@ -4,7 +4,6 @@
 // to distingNT's 3 pots + 2 encoders + 5 presses.
 
 #include <cmath>
-#include <cstring>
 #include <new>
 
 #include <distingnt/api.h>
@@ -113,11 +112,9 @@ static const _NT_parameter parameters[] = {
   NT_PARAMETER_CV_INPUT("Corrupt Gate In", 0, 0)  // 36
   NT_PARAMETER_CV_INPUT("Freeze Gate In",  0, 0)  // 37
   NT_PARAMETER_CV_INPUT("Clock In",        0, 0)  // 38
-  // 39-42: Advanced
+  // 39-40: Advanced
   {.name = "Seed Mode",     .min = 0, .max = 1,     .def = 0, .unit = kNT_unitEnum,    .scaling = 0, .enumStrings = kEnumSeedMode},  // 39
   {.name = "Fixed Seed",    .min = 0, .max = 32767, .def = 1, .unit = kNT_unitNone,    .scaling = 0, .enumStrings = nullptr},         // 40
-  {.name = "Reset Engine",  .min = 0, .max = 1,     .def = 0, .unit = kNT_unitConfirm, .scaling = 0, .enumStrings = nullptr},         // 41
-  {.name = "Restore Defaults", .min = 0, .max = 1,  .def = 0, .unit = kNT_unitConfirm, .scaling = 0, .enumStrings = nullptr},         // 42
 };
 
 static_assert(ARRAY_SIZE(parameters) == static_cast<int>(DistingNtParamId::kParamCount),
@@ -170,7 +167,6 @@ static const uint8_t page_gates[] = {
 
 static const uint8_t page_advanced[] = {
   P(DistingNtParamId::kParamRandomSeedMode), P(DistingNtParamId::kParamFixedSeed),
-  P(DistingNtParamId::kParamResetEngine), P(DistingNtParamId::kParamRestoreDefaults),
 };
 
 static const _NT_parameterPage pages[] = {
@@ -349,33 +345,6 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs,
 
 void parameterChanged(_NT_algorithm* self, int p) {
   CorrupterAlgorithm* alg = static_cast<CorrupterAlgorithm*>(self);
-
-  // Handle action parameters
-  if (p == P(DistingNtParamId::kParamResetEngine)) {
-    if (alg->v[p] != 0) {
-      alg->engine.reset();
-      setParam(self, p, 0);
-    }
-    return;
-  }
-  if (p == P(DistingNtParamId::kParamRestoreDefaults)) {
-    if (alg->v[p] != 0) {
-      // Reset all main knob params to defaults
-      setParam(self, P(DistingNtParamId::kParamTime), 500);
-      setParam(self, P(DistingNtParamId::kParamRepeats), 500);
-      setParam(self, P(DistingNtParamId::kParamMix), 1000);
-      setParam(self, P(DistingNtParamId::kParamBend), 0);
-      setParam(self, P(DistingNtParamId::kParamBreak), 0);
-      setParam(self, P(DistingNtParamId::kParamCorrupt), 0);
-      setParam(self, P(DistingNtParamId::kParamBendEnabled), 0);
-      setParam(self, P(DistingNtParamId::kParamBreakEnabled), 0);
-      setParam(self, P(DistingNtParamId::kParamFreezeEnabled), 0);
-      setParam(self, P(DistingNtParamId::kParamMode), 0);
-      setParam(self, P(DistingNtParamId::kParamCorruptAlgorithm), 0);
-      setParam(self, p, 0);
-    }
-    return;
-  }
 
   syncParameters(alg);
 }
@@ -793,33 +762,6 @@ bool deserialise(_NT_algorithm* self, _NT_jsonParse& parse) {
 }
 
 // ---------------------------------------------------------------------------
-// parameterString (for Confirm-type params)
-// ---------------------------------------------------------------------------
-
-int parameterString(_NT_algorithm* self, int p, int val, char* buff) {
-  (void)self;
-  if (p == P(DistingNtParamId::kParamResetEngine)) {
-    if (val == 0) {
-      strcpy(buff, "Ready");
-      return 5;
-    } else {
-      strcpy(buff, "RESET?");
-      return 6;
-    }
-  }
-  if (p == P(DistingNtParamId::kParamRestoreDefaults)) {
-    if (val == 0) {
-      strcpy(buff, "Ready");
-      return 5;
-    } else {
-      strcpy(buff, "RESTORE?");
-      return 8;
-    }
-  }
-  return 0;
-}
-
-// ---------------------------------------------------------------------------
 // Factory + pluginEntry
 // ---------------------------------------------------------------------------
 
@@ -846,7 +788,7 @@ static const _NT_factory factory = {
   .deserialise = deserialise,
   .midiSysEx = nullptr,
   .parameterUiPrefix = nullptr,
-  .parameterString = parameterString,
+  .parameterString = nullptr,
 };
 
 }  // namespace
