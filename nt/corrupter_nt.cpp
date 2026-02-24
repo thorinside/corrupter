@@ -4,10 +4,13 @@
 // to distingNT's 3 pots + 2 encoders + 5 presses.
 
 #include <cmath>
+#include <cstring>
 #include <new>
 
 #include <distingnt/api.h>
+#include <distingnt/microtuning.h>
 #include <distingnt/serialisation.h>
+#include <distingnt/wav.h>
 
 #include "corrupter_dsp/engine.h"
 #include "corrupter_dsp/parameter_ids.h"
@@ -115,6 +118,9 @@ static const _NT_parameter parameters[] = {
   // 39-40: Advanced
   {.name = "Seed Mode",     .min = 0, .max = 1,     .def = 0, .unit = kNT_unitEnum,    .scaling = 0, .enumStrings = kEnumSeedMode},  // 39
   {.name = "Fixed Seed",    .min = 0, .max = 32767, .def = 1, .unit = kNT_unitNone,    .scaling = 0, .enumStrings = nullptr},         // 40
+  // 41-42: Scale quantization
+  {.name = "Scale File",   .min = 0, .max = 0,     .def = 0, .unit = kNT_unitConfirm, .scaling = 0, .enumStrings = nullptr},         // 41
+  {.name = "Root Note",    .min = 0, .max = 127,   .def = 60, .unit = kNT_unitMIDINote, .scaling = 0, .enumStrings = nullptr},       // 42
 };
 
 static_assert(ARRAY_SIZE(parameters) == static_cast<int>(DistingNtParamId::kParamCount),
@@ -165,6 +171,10 @@ static const uint8_t page_gates[] = {
   P(DistingNtParamId::kParamClockGateInput),
 };
 
+static const uint8_t page_scale[] = {
+  P(DistingNtParamId::kParamScaleFile), P(DistingNtParamId::kParamScaleRoot),
+};
+
 static const uint8_t page_advanced[] = {
   P(DistingNtParamId::kParamRandomSeedMode), P(DistingNtParamId::kParamFixedSeed),
 };
@@ -177,7 +187,8 @@ static const _NT_parameterPage pages[] = {
   {.name = "Audio",    .numParams = ARRAY_SIZE(page_audio),      .group = 5, .unused = {}, .params = page_audio},
   {.name = "CV Route", .numParams = ARRAY_SIZE(page_cv_routing), .group = 6, .unused = {}, .params = page_cv_routing},
   {.name = "Gates",    .numParams = ARRAY_SIZE(page_gates),      .group = 6, .unused = {}, .params = page_gates},
-  {.name = "Advanced", .numParams = ARRAY_SIZE(page_advanced),   .group = 7, .unused = {}, .params = page_advanced},
+  {.name = "Scale",    .numParams = ARRAY_SIZE(page_scale),      .group = 7, .unused = {}, .params = page_scale},
+  {.name = "Advanced", .numParams = ARRAY_SIZE(page_advanced),   .group = 8, .unused = {}, .params = page_advanced},
 };
 
 static const _NT_parameterPages parameterPages = {
@@ -210,8 +221,28 @@ struct CorrupterAlgorithm : public _NT_algorithm {
   float wave_accum = 0.0f;             // running peak for current bin
   uint32_t wave_accum_count = 0;       // frames accumulated in current bin
 
+  // SCL scale loading state
+  _NT_sclRequest sclRequest = {};
+  _NT_sclNote sclNotes[128] = {};
+  char sclName[22] = {};
+  char sclDescription[44] = {};
+  bool cardMounted = false;
+  bool awaitingCallback = false;
+  bool scaleDirty = false;
+  _NT_parameter paramDefs[static_cast<int>(DistingNtParamId::kParamCount)] = {};
+
   bool initialised = false;
 };
+
+// ---------------------------------------------------------------------------
+// SCL callback
+// ---------------------------------------------------------------------------
+
+static void sclCallback(void* callbackData) {
+  CorrupterAlgorithm* alg = static_cast<CorrupterAlgorithm*>(callbackData);
+  alg->awaitingCallback = false;
+  alg->scaleDirty = true;
+}
 
 // ---------------------------------------------------------------------------
 // syncParameters - read all NT param values into cached engine state
@@ -275,6 +306,7 @@ void syncParameters(CorrupterAlgorithm* alg) {
   alg->engine.set_knobs(alg->knobs);
   alg->engine.set_persistent_state(alg->persistent);
   alg->engine.set_clock_mode_internal(v[P(DistingNtParamId::kParamClockSource)] == 0);
+  alg->engine.set_scale_root(v[P(DistingNtParamId::kParamScaleRoot)]);
 }
 
 // ---------------------------------------------------------------------------
@@ -312,8 +344,21 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs,
   (void)specs;
 
   CorrupterAlgorithm* alg = new (ptrs.sram) CorrupterAlgorithm();
-  alg->parameters = parameters;
+
+  // Copy parameter definitions to mutable array (needed for NT_updateParameterDefinition)
+  std::memcpy(alg->paramDefs, parameters, sizeof(parameters));
+  alg->parameters = alg->paramDefs;
   alg->parameterPages = &parameterPages;
+
+  // Set up SCL request buffers
+  alg->sclRequest.notes = alg->sclNotes;
+  alg->sclRequest.maxNotes = 128;
+  alg->sclRequest.nameBuffer = alg->sclName;
+  alg->sclRequest.nameBufferSize = sizeof(alg->sclName);
+  alg->sclRequest.descriptionBuffer = alg->sclDescription;
+  alg->sclRequest.descriptionBufferSize = sizeof(alg->sclDescription);
+  alg->sclRequest.callback = sclCallback;
+  alg->sclRequest.callbackData = alg;
 
   int32_t buf_secs = specs ? specs[kSpecBufferSeconds] : specifications[kSpecBufferSeconds].def;
   if (buf_secs < specifications[kSpecBufferSeconds].min) buf_secs = specifications[kSpecBufferSeconds].min;
@@ -346,6 +391,22 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs,
 void parameterChanged(_NT_algorithm* self, int p) {
   CorrupterAlgorithm* alg = static_cast<CorrupterAlgorithm*>(self);
 
+  // Intercept scale file changes to trigger async SCL load
+  if (p == P(DistingNtParamId::kParamScaleFile)) {
+    if (!alg->awaitingCallback) {
+      int16_t fileIdx = alg->v[P(DistingNtParamId::kParamScaleFile)];
+      if (fileIdx > 0) {
+        alg->sclRequest.index = static_cast<uint32_t>(fileIdx - 1);
+        alg->awaitingCallback = true;
+        if (!NT_readScl(alg->sclRequest))
+          alg->awaitingCallback = false;
+      } else {
+        // Index 0 = no scale
+        alg->engine.clear_scale();
+      }
+    }
+  }
+
   syncParameters(alg);
 }
 
@@ -356,6 +417,40 @@ void parameterChanged(_NT_algorithm* self, int p) {
 void step(_NT_algorithm* self, float* busFrames, int numFramesBy4) {
   CorrupterAlgorithm* alg = static_cast<CorrupterAlgorithm*>(self);
   if (!alg->initialised) return;
+
+  // --- SD card mount detection ---
+  bool cardMounted = NT_isSdCardMounted();
+  if (alg->cardMounted != cardMounted) {
+    alg->cardMounted = cardMounted;
+    if (cardMounted) {
+      int numScl = static_cast<int>(NT_getNumScl());
+      // max = numScl so that index 0 = "None" and 1..numScl = scale files
+      alg->paramDefs[P(DistingNtParamId::kParamScaleFile)].max = static_cast<int16_t>(numScl);
+      int algIdx = NT_algorithmIndex(self);
+      if (algIdx >= 0)
+        NT_updateParameterDefinition(algIdx, P(DistingNtParamId::kParamScaleFile));
+      // Re-trigger load if a scale was already selected
+      parameterChanged(self, P(DistingNtParamId::kParamScaleFile));
+    }
+  }
+
+  // --- Process loaded scale data ---
+  if (alg->scaleDirty) {
+    alg->scaleDirty = false;
+    if (!alg->sclRequest.error && alg->sclRequest.numNotes > 0) {
+      // Convert _NT_sclNote array to double ratios
+      double ratios[128];
+      for (uint32_t i = 0; i < alg->sclRequest.numNotes && i < 128; ++i) {
+        if (alg->sclNotes[i].isRatio()) {
+          ratios[i] = static_cast<double>(alg->sclNotes[i].numerator()) /
+                      static_cast<double>(alg->sclNotes[i].denominator());
+        } else {
+          ratios[i] = std::pow(2.0, alg->sclNotes[i].octaves);
+        }
+      }
+      alg->engine.load_scale(ratios, alg->sclRequest.numNotes);
+    }
+  }
 
   const int numFrames = numFramesBy4 * 4;
 
@@ -664,6 +759,32 @@ bool draw(_NT_algorithm* self) {
 }
 
 // ---------------------------------------------------------------------------
+// parameterString - display scale name for Scale File parameter
+// ---------------------------------------------------------------------------
+
+int parameterString(_NT_algorithm* self, int p, int v, char* buff) {
+  (void)self;
+
+  if (p == P(DistingNtParamId::kParamScaleFile)) {
+    if (v <= 0) {
+      std::strncpy(buff, "None", kNT_parameterStringSize - 1);
+      buff[kNT_parameterStringSize - 1] = 0;
+      return static_cast<int>(std::strlen(buff));
+    }
+    _NT_sclInfo info;
+    NT_getSclInfo(static_cast<uint32_t>(v - 1), info);
+    if (info.name) {
+      std::strncpy(buff, info.name, kNT_parameterStringSize - 1);
+      buff[kNT_parameterStringSize - 1] = 0;
+      return static_cast<int>(std::strlen(buff));
+    }
+    return 0;
+  }
+
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
 // Serialisation
 // ---------------------------------------------------------------------------
 
@@ -788,7 +909,7 @@ static const _NT_factory factory = {
   .deserialise = deserialise,
   .midiSysEx = nullptr,
   .parameterUiPrefix = nullptr,
-  .parameterString = nullptr,
+  .parameterString = parameterString,
 };
 
 }  // namespace

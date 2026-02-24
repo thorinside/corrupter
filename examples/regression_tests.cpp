@@ -392,7 +392,7 @@ bool TestDifferentSeedChangesOutput() {
   s1.state.corrupt_bank = corrupter::CorruptBank::kLegacy;
   s1.state.glitch_window_01 = 0.1f;
 
-  s1.knobs.time_01 = 1.0f;
+  s1.knobs.time_01 = 0.1f;
   s1.knobs.repeats_01 = 0.7f;
   s1.knobs.mix_01 = 1.0f;
   s1.knobs.bend_01 = 0.7f;
@@ -592,7 +592,7 @@ bool TestBreakMacroIntensityAffectsOutput() {
   low.state.macro_mode = true;
   low.state.bend_enabled = false;
   low.state.break_enabled = true;
-  low.knobs.time_01 = 1.0f;
+  low.knobs.time_01 = 0.1f;
   low.knobs.repeats_01 = 0.65f;
   low.knobs.mix_01 = 1.0f;
   low.knobs.break_01 = 0.05f;

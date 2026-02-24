@@ -8,6 +8,7 @@
 #include <limits>
 #include <new>
 
+#include "corrupter_dsp/pitch_quantizer.h"
 #include "internal/clock_engine.h"
 #include "internal/corrupt_engine.h"
 #include "internal/dsp_common.h"
@@ -255,6 +256,7 @@ struct Engine::Impl {
   SegmentState segment;
   PlaybackChannelState channels[2];
   internal::XorShift32 rng;
+  PitchQuantizer pitch_quantizer;
 
   GateState prev_gate;
   bool pending_freeze_toggle = false;
@@ -351,6 +353,7 @@ struct Engine::Impl {
           if (rng.Next01() < (0.12f * wobble)) {
             rate_oct -= (0.5f + 1.7f * rng.Next01()) * wobble;
           }
+          rate_oct = pitch_quantizer.quantize(rate_oct);
           ch->rate = std::pow(2.0f, internal::Clamp(rate_oct, -3.0f, 3.0f));
           ch->reverse = (rng.Next01() < (0.15f + 0.75f * bend_macro_eff));
           ch->tape_wow_hz = 0.05f + 0.55f * wobble * (0.6f + 0.4f * rng.Next01());
@@ -393,7 +396,8 @@ struct Engine::Impl {
           ch->silence_duty = 0.0f;
         }
       } else {
-        const float micro_oct = internal::Clamp(bend_micro_octaves, -3.0f, 3.0f);
+        const float micro_oct = pitch_quantizer.quantize(
+            internal::Clamp(bend_micro_octaves, -3.0f, 3.0f));
         const float micro_intensity =
             state.bend_enabled ? internal::Clamp01(std::fabs(micro_oct) / 3.0f) : 0.0f;
         ch->rate = std::pow(2.0f, micro_oct);
@@ -674,6 +678,21 @@ void Engine::set_clock_mode_internal(bool internal) noexcept {
     return;
   }
   impl_->clock.SetInternalMode(internal);
+}
+
+void Engine::load_scale(const double* ratios, uint32_t num_notes) noexcept {
+  if (!impl_) return;
+  impl_->pitch_quantizer.loadRatios(ratios, num_notes);
+}
+
+void Engine::clear_scale() noexcept {
+  if (!impl_) return;
+  impl_->pitch_quantizer.clear();
+}
+
+void Engine::set_scale_root(int midi_note) noexcept {
+  if (!impl_) return;
+  impl_->pitch_quantizer.set_root(midi_note);
 }
 
 bool Engine::get_runtime_info(RuntimeInfo* out) const noexcept {

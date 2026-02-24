@@ -23,6 +23,7 @@ endif()
 add_library(corrupter_dsp STATIC
   src/engine.cpp
   src/c_api.cpp
+  src/pitch_quantizer.cpp
   src/internal/clock_engine.cpp
   src/internal/corrupt_engine.cpp
 )

@@ -47,7 +47,9 @@ enum class DistingNtParamId : uint16_t {
   kParamClockGateInput = 38,
   kParamRandomSeedMode = 39,
   kParamFixedSeed = 40,
-  kParamCount = 41
+  kParamScaleFile = 41,
+  kParamScaleRoot = 42,
+  kParamCount = 43
 };
 
 }  // namespace corrupter

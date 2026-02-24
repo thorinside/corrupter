@@ -17,6 +17,7 @@ NT_SOURCES = corrupter_nt.cpp
 DSP_SOURCES = \
 	$(CORRUPTER_ROOT)/src/engine.cpp \
 	$(CORRUPTER_ROOT)/src/c_api.cpp \
+	$(CORRUPTER_ROOT)/src/pitch_quantizer.cpp \
 	$(CORRUPTER_ROOT)/src/internal/clock_engine.cpp \
 	$(CORRUPTER_ROOT)/src/internal/corrupt_engine.cpp
 
@@ -71,6 +72,7 @@ BUILD_OBJS = \
 	$(BUILD_DIR)/corrupter_nt.o \
 	$(BUILD_DIR)/engine.o \
 	$(BUILD_DIR)/c_api.o \
+	$(BUILD_DIR)/pitch_quantizer.o \
 	$(BUILD_DIR)/clock_engine.o \
 	$(BUILD_DIR)/corrupt_engine.o
 
@@ -81,6 +83,9 @@ $(BUILD_DIR)/engine.o: $(CORRUPTER_ROOT)/src/engine.cpp | $(BUILD_DIR)
 	$(CXX_ARM) $(CXXFLAGS_ARM) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/c_api.o: $(CORRUPTER_ROOT)/src/c_api.cpp | $(BUILD_DIR)
+	$(CXX_ARM) $(CXXFLAGS_ARM) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/pitch_quantizer.o: $(CORRUPTER_ROOT)/src/pitch_quantizer.cpp | $(BUILD_DIR)
 	$(CXX_ARM) $(CXXFLAGS_ARM) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/clock_engine.o: $(CORRUPTER_ROOT)/src/internal/clock_engine.cpp | $(BUILD_DIR)

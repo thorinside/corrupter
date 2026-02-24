@@ -112,6 +112,10 @@ class Engine {
 
   void process(const AudioBlock& audio, const CvInputs& cv, const GateInputs& gates) noexcept;
 
+  void load_scale(const double* ratios, uint32_t num_notes) noexcept;
+  void clear_scale() noexcept;
+  void set_scale_root(int midi_note) noexcept;
+
  private:
   struct Impl;
   Impl* impl_;
