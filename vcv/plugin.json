@@ -1,0 +1,28 @@
+{
+  "slug": "Corrupter",
+  "name": "Corrupter",
+  "version": "2.0.0",
+  "license": "MIT",
+  "brand": "No Such Device",
+  "author": "Thorinside",
+  "authorEmail": "",
+  "authorUrl": "",
+  "pluginUrl": "",
+  "manualUrl": "",
+  "sourceUrl": "",
+  "donateUrl": "",
+  "changelogUrl": "",
+  "modules": [
+    {
+      "slug": "Corrupter",
+      "name": "Corrupter",
+      "description": "Data Bender-style circuit-bent stereo buffer effect",
+      "tags": [
+        "Effect",
+        "Delay",
+        "Granular",
+        "Glitch"
+      ]
+    }
+  ]
+}

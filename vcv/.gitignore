@@ -1,0 +1,8 @@
+Rack-SDK/
+build/
+dist/
+plugin.so
+plugin.dylib
+plugin.dll
+*.d
+*.o

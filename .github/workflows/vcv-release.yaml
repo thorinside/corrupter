@@ -20,10 +20,6 @@ jobs:
             rack-os: lin
             rack-arch: x64
             artifact: lin-x64
-          - os: macos-13
-            rack-os: mac
-            rack-arch: x64
-            artifact: mac-x64
           - os: macos-latest
             rack-os: mac
             rack-arch: arm64
@@ -38,8 +34,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Extract version from tag
         id: version
@@ -63,14 +57,7 @@ jobs:
           unzip -o rack-sdk.zip
           rm rack-sdk.zip
 
-      - name: Build plugin (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          cd vcv
-          make dist
-
-      - name: Build plugin (Windows)
-        if: runner.os == 'Windows'
+      - name: Build plugin
         shell: bash
         run: |
           cd vcv
