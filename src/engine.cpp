@@ -98,6 +98,8 @@ struct SegmentState {
 };
 
 constexpr float kTwoPi = 6.28318530717958647693f;
+constexpr uint32_t kFreezeXfadeSamples = 128;
+constexpr float kFreezeXfadeStep = 1.0f / static_cast<float>(kFreezeXfadeSamples);
 
 float ReadBufferLinear(const float* buffer, uint32_t buffer_frames, double index) {
   if (!buffer || buffer_frames == 0) {
@@ -261,6 +263,7 @@ struct Engine::Impl {
   GateState prev_gate;
   bool pending_freeze_toggle = false;
   bool corrupt_enabled = false;
+  float freeze_write_fade = 1.0f;  // 1.0 = writing, 0.0 = frozen
 
   void ResetPlayback() {
     segment = {};
@@ -270,6 +273,7 @@ struct Engine::Impl {
     segment.subsection_length = segment.length;
     channels[0].Reset();
     channels[1].Reset();
+    freeze_write_fade = 1.0f;
   }
 
   float EffectiveUnipolar(float knob, float cv_volts, float atten_01) const {
@@ -549,6 +553,7 @@ void Engine::reset() noexcept {
   impl_->prev_gate = {};
   impl_->pending_freeze_toggle = false;
   impl_->corrupt_enabled = false;
+  impl_->freeze_write_fade = 1.0f;
   impl_->runtime_sample_rate_hz = impl_->cfg.sample_rate_hz;
   impl_->runtime_max_block_frames = impl_->cfg.max_block_frames;
   impl_->clock.Reset(impl_->runtime_sample_rate_hz, impl_->knobs.time_01);
@@ -805,10 +810,22 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
                              impl_->runtime_sample_rate_hz);
     }
 
-    if (!impl_->state.freeze_enabled) {
-      impl_->buffer_l[impl_->write_idx] = in_l;
-      impl_->buffer_r[impl_->write_idx] = in_r;
-      impl_->write_idx = (impl_->write_idx + 1u) % impl_->buffer_frames;
+    {
+      const float target = impl_->state.freeze_enabled ? 0.0f : 1.0f;
+      if (impl_->freeze_write_fade < target) {
+        impl_->freeze_write_fade = std::min(target, impl_->freeze_write_fade + kFreezeXfadeStep);
+      } else if (impl_->freeze_write_fade > target) {
+        impl_->freeze_write_fade = std::max(target, impl_->freeze_write_fade - kFreezeXfadeStep);
+      }
+
+      const float fade = impl_->freeze_write_fade;
+      if (fade > 1e-6f) {
+        impl_->buffer_l[impl_->write_idx] =
+            fade * in_l + (1.0f - fade) * impl_->buffer_l[impl_->write_idx];
+        impl_->buffer_r[impl_->write_idx] =
+            fade * in_r + (1.0f - fade) * impl_->buffer_r[impl_->write_idx];
+        impl_->write_idx = (impl_->write_idx + 1u) % impl_->buffer_frames;
+      }
     }
 
     auto render_channel = [&](int ch, float input_sample) {

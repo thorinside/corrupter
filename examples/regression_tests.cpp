@@ -1264,6 +1264,98 @@ bool TestCorruptAlgorithmsFiniteAtExtremes() {
   return true;
 }
 
+bool TestFreezeCrossfadeNoDiscontinuity() {
+  // Feed a low-frequency sine, toggle freeze on then off, verify no clicks.
+  constexpr float kSr = 96000.0f;
+  constexpr uint32_t kFrames = 96000;  // 1 second
+  constexpr uint32_t kFreezeOnSample = 48000;   // 0.5s
+  constexpr uint32_t kFreezeOffSample = 72000;  // 0.75s
+
+  Scenario s{};
+  s.cfg.sample_rate_hz = kSr;
+  s.cfg.max_block_frames = 256;
+  s.cfg.max_buffer_seconds = 5.0f;
+  s.cfg.random_seed = 777;
+  s.clock_mode_internal = true;
+  s.state.freeze_latching = false;
+  s.state.freeze_enabled = false;
+  s.knobs.time_01 = 0.5f;
+  s.knobs.mix_01 = 1.0f;  // wet only — measure buffer output directly
+  s.frames = kFrames;
+
+  // Build a clean 100 Hz sine as input.
+  StereoBuffers buf;
+  buf.in_l.resize(kFrames);
+  buf.in_r.resize(kFrames);
+  buf.out_l.resize(kFrames);
+  buf.out_r.resize(kFrames);
+  for (uint32_t i = 0; i < kFrames; ++i) {
+    const float v = 0.5f * std::sin(2.0 * kPi * 100.0 * i / kSr);
+    buf.in_l[i] = v;
+    buf.in_r[i] = v;
+  }
+
+  // Freeze gate: high from kFreezeOnSample to kFreezeOffSample.
+  ModulationBuffers mod;
+  mod.freeze_gate.assign(kFrames, 0.0f);
+  for (uint32_t i = kFreezeOnSample; i < kFreezeOffSample; ++i) {
+    mod.freeze_gate[i] = 5.0f;
+  }
+
+  // Run engine.
+  const size_t dram_bytes = corrupter::Engine::required_dram_bytes(s.cfg);
+  std::vector<uint8_t> dram(dram_bytes);
+  corrupter::Engine engine;
+  if (!engine.initialise(dram.data(), dram.size(), s.cfg)) {
+    return false;
+  }
+  engine.set_persistent_state(s.state);
+  engine.set_knobs(s.knobs);
+  engine.set_clock_mode_internal(s.clock_mode_internal);
+  engine.set_audio_context(s.cfg.sample_rate_hz, s.cfg.max_block_frames);
+
+  corrupter::AudioBlock audio;
+  audio.in_l = buf.in_l.data();
+  audio.in_r = buf.in_r.data();
+  audio.out_l = buf.out_l.data();
+  audio.out_r = buf.out_r.data();
+  audio.frames = kFrames;
+
+  corrupter::CvInputs cv;
+  corrupter::GateInputs gates;
+  gates.freeze_gate_v = mod.freeze_gate.data();
+  engine.process(audio, cv, gates);
+
+  // Scan for max sample-to-sample delta near the two toggle points.
+  constexpr uint32_t kWindow = 256;
+  constexpr float kMaxDelta = 0.05f;
+
+  auto max_delta_in_range = [&](uint32_t center) -> float {
+    const uint32_t lo = (center > kWindow) ? center - kWindow : 1;
+    const uint32_t hi = std::min(kFrames - 1, center + kWindow);
+    float worst = 0.0f;
+    for (uint32_t i = lo; i < hi; ++i) {
+      const float dl = std::fabs(buf.out_l[i] - buf.out_l[i - 1]);
+      const float dr = std::fabs(buf.out_r[i] - buf.out_r[i - 1]);
+      worst = std::max(worst, std::max(dl, dr));
+    }
+    return worst;
+  };
+
+  const float delta_on = max_delta_in_range(kFreezeOnSample);
+  const float delta_off = max_delta_in_range(kFreezeOffSample);
+
+  if (delta_on > kMaxDelta) {
+    std::cerr << "  freeze-ON max delta " << delta_on << " > " << kMaxDelta << "\n";
+    return false;
+  }
+  if (delta_off > kMaxDelta) {
+    std::cerr << "  freeze-OFF max delta " << delta_off << " > " << kMaxDelta << "\n";
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 int main() {
@@ -1304,6 +1396,7 @@ int main() {
       {"dj_filter_tilt_response", TestDjFilterTiltResponse},
       {"vinyl_generates_surface_noise", TestVinylGeneratesSurfaceNoise},
       {"corrupt_algorithms_finite_at_extremes", TestCorruptAlgorithmsFiniteAtExtremes},
+      {"freeze_crossfade_no_discontinuity", TestFreezeCrossfadeNoDiscontinuity},
   };
 
   int failures = 0;
