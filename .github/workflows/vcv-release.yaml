@@ -1,0 +1,105 @@
+name: Build and Release VCV Rack Plugin
+
+on:
+  push:
+    tags:
+      - "vcv/v*"
+
+permissions:
+  contents: write
+
+env:
+  RACK_SDK_VERSION: "2.6.4"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rack-os: lin
+            rack-arch: x64
+            artifact: lin-x64
+          - os: macos-13
+            rack-os: mac
+            rack-arch: x64
+            artifact: mac-x64
+          - os: macos-latest
+            rack-os: mac
+            rack-arch: arm64
+            artifact: mac-arm64
+          - os: windows-latest
+            rack-os: win
+            rack-arch: x64
+            artifact: win-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/vcv/v}"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Set plugin.json version from tag
+        shell: bash
+        run: |
+          cd vcv
+          jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' plugin.json > plugin.json.tmp
+          mv plugin.json.tmp plugin.json
+
+      - name: Download Rack SDK
+        shell: bash
+        run: |
+          cd vcv
+          curl -L -o rack-sdk.zip "https://vcvrack.com/downloads/Rack-SDK-${{ env.RACK_SDK_VERSION }}-${{ matrix.rack-os }}-${{ matrix.rack-arch }}.zip"
+          unzip -o rack-sdk.zip
+          rm rack-sdk.zip
+
+      - name: Build plugin (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd vcv
+          make dist
+
+      - name: Build plugin (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cd vcv
+          make dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcvplugin-${{ matrix.artifact }}
+          path: vcv/dist/*.vcvplugin
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "VCV Rack Plugin ${{ github.ref_name }}"
+          files: artifacts/*.vcvplugin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
