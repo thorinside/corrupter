@@ -400,7 +400,7 @@ struct Engine::Impl {
             internal::Clamp(bend_micro_octaves, -3.0f, 3.0f));
         const float micro_intensity =
             state.bend_enabled ? internal::Clamp01(std::fabs(micro_oct) / 3.0f) : 0.0f;
-        ch->rate = std::pow(2.0f, micro_oct);
+        ch->rate = state.bend_enabled ? std::pow(2.0f, micro_oct) : 1.0f;
         ch->reverse = state.bend_enabled;
         ch->tape_wow_hz = 0.12f + 0.30f * micro_intensity;
         ch->tape_flutter_hz = 3.0f + 5.0f * micro_intensity;
@@ -725,45 +725,48 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
     const float in_l = audio.in_l ? audio.in_l[i] : 0.0f;
     const float in_r = audio.in_r ? audio.in_r[i] : 0.0f;
 
-    const bool bend_gate = internal::GateHigh(CvOrZero(gates.bend_gate_v, i));
-    const bool break_gate = internal::GateHigh(CvOrZero(gates.break_gate_v, i));
-    const bool corrupt_gate = internal::GateHigh(CvOrZero(gates.corrupt_gate_v, i));
-    const bool freeze_gate = internal::GateHigh(CvOrZero(gates.freeze_gate_v, i));
+    // Gate processing — only when connected (non-null pointer).
+    // When unconnected, leave enable state unchanged so buttons persist.
+    const bool has_bend_gate = (gates.bend_gate_v != nullptr);
+    const bool has_break_gate = (gates.break_gate_v != nullptr);
+    const bool has_corrupt_gate = (gates.corrupt_gate_v != nullptr);
+    const bool has_freeze_gate = (gates.freeze_gate_v != nullptr);
+
+    const bool bend_gate = has_bend_gate ? internal::GateHigh(gates.bend_gate_v[i]) : false;
+    const bool break_gate = has_break_gate ? internal::GateHigh(gates.break_gate_v[i]) : false;
+    const bool corrupt_gate = has_corrupt_gate ? internal::GateHigh(gates.corrupt_gate_v[i]) : false;
+    const bool freeze_gate = has_freeze_gate ? internal::GateHigh(gates.freeze_gate_v[i]) : false;
     const bool clock_gate = internal::GateHigh(CvOrZero(gates.clock_gate_v, i));
 
-    const bool bend_rise = internal::RisingEdge(bend_gate, impl_->prev_gate.bend);
-    const bool break_rise = internal::RisingEdge(break_gate, impl_->prev_gate.brk);
-    const bool corrupt_rise = internal::RisingEdge(corrupt_gate, impl_->prev_gate.corrupt);
-    const bool freeze_rise = internal::RisingEdge(freeze_gate, impl_->prev_gate.freeze);
+    const bool bend_rise = has_bend_gate ? internal::RisingEdge(bend_gate, impl_->prev_gate.bend) : false;
+    const bool break_rise = has_break_gate ? internal::RisingEdge(break_gate, impl_->prev_gate.brk) : false;
+    const bool corrupt_rise = has_corrupt_gate ? internal::RisingEdge(corrupt_gate, impl_->prev_gate.corrupt) : false;
+    const bool freeze_rise = has_freeze_gate ? internal::RisingEdge(freeze_gate, impl_->prev_gate.freeze) : false;
     const bool clock_rise = internal::RisingEdge(clock_gate, impl_->prev_gate.clock);
 
     if (!impl_->state.gate_latching) {
-      impl_->state.bend_enabled = bend_gate;
-      impl_->state.break_enabled = break_gate;
-      if (!impl_->state.corrupt_gate_is_reset) {
+      if (has_bend_gate) impl_->state.bend_enabled = bend_gate;
+      if (has_break_gate) impl_->state.break_enabled = break_gate;
+      if (has_corrupt_gate && !impl_->state.corrupt_gate_is_reset) {
         impl_->corrupt_enabled = corrupt_gate;
       }
     } else {
-      if (bend_rise) {
-        impl_->state.bend_enabled = !impl_->state.bend_enabled;
-      }
-      if (break_rise) {
-        impl_->state.break_enabled = !impl_->state.break_enabled;
-      }
+      if (bend_rise) impl_->state.bend_enabled = !impl_->state.bend_enabled;
+      if (break_rise) impl_->state.break_enabled = !impl_->state.break_enabled;
       if (corrupt_rise && !impl_->state.corrupt_gate_is_reset) {
         impl_->corrupt_enabled = !impl_->corrupt_enabled;
       }
     }
 
-    if (impl_->state.freeze_latching) {
-      if (freeze_rise) {
-        impl_->pending_freeze_toggle = true;
+    if (has_freeze_gate) {
+      if (impl_->state.freeze_latching) {
+        if (freeze_rise) impl_->pending_freeze_toggle = true;
+      } else {
+        impl_->state.freeze_enabled = freeze_gate;
       }
-    } else {
-      impl_->state.freeze_enabled = freeze_gate;
     }
 
-    if (impl_->state.corrupt_gate_is_reset && corrupt_rise) {
+    if (has_corrupt_gate && impl_->state.corrupt_gate_is_reset && corrupt_rise) {
       impl_->write_idx = 0;
       impl_->channels[0].phase = 0.0;
       impl_->channels[1].phase = 0.0;
@@ -909,10 +912,10 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
     audio.out_l[i] = render_channel(0, in_l);
     audio.out_r[i] = render_channel(1, in_r);
 
-    impl_->prev_gate.bend = bend_gate;
-    impl_->prev_gate.brk = break_gate;
-    impl_->prev_gate.corrupt = corrupt_gate;
-    impl_->prev_gate.freeze = freeze_gate;
+    if (has_bend_gate) impl_->prev_gate.bend = bend_gate;
+    if (has_break_gate) impl_->prev_gate.brk = break_gate;
+    if (has_corrupt_gate) impl_->prev_gate.corrupt = corrupt_gate;
+    if (has_freeze_gate) impl_->prev_gate.freeze = freeze_gate;
     impl_->prev_gate.clock = clock_gate;
 
     ++impl_->processed_frames;

@@ -75,7 +75,6 @@ struct CorrupterAlgorithm : public _NT_algorithm {
 
   int gate_bend = 0;
   int gate_break = 0;
-  int gate_corrupt = 0;
   int gate_freeze = 0;
   int gate_clock = 0;
 
@@ -144,7 +143,7 @@ static const uint8_t page_modes[] = {
     P(DistingNtParamId::kParamBendEnabled), P(DistingNtParamId::kParamBreakEnabled),
     P(DistingNtParamId::kParamFreezeEnabled), P(DistingNtParamId::kParamClockSource),
     P(DistingNtParamId::kParamStereoMode), P(DistingNtParamId::kParamGateMode),
-    P(DistingNtParamId::kParamFreezeGateMode), P(DistingNtParamId::kParamCorruptGateMode),
+    P(DistingNtParamId::kParamFreezeGateMode),
 };
 
 static const uint8_t page_routing_audio[] = {
@@ -163,7 +162,7 @@ static const uint8_t page_routing_cv[] = {
 
 static const uint8_t page_routing_gate[] = {
     P(DistingNtParamId::kParamBendGateInput), P(DistingNtParamId::kParamBreakGateInput),
-    P(DistingNtParamId::kParamCorruptGateInput), P(DistingNtParamId::kParamFreezeGateInput),
+    P(DistingNtParamId::kParamFreezeGateInput),
     P(DistingNtParamId::kParamClockGateInput),
 };
 
@@ -243,7 +242,6 @@ void syncParameters(CorrupterAlgorithm* alg) {
 
   alg->gate_bend = clampBus(v[P(DistingNtParamId::kParamBendGateInput)], true);
   alg->gate_break = clampBus(v[P(DistingNtParamId::kParamBreakGateInput)], true);
-  alg->gate_corrupt = clampBus(v[P(DistingNtParamId::kParamCorruptGateInput)], true);
   alg->gate_freeze = clampBus(v[P(DistingNtParamId::kParamFreezeGateInput)], true);
   alg->gate_clock = clampBus(v[P(DistingNtParamId::kParamClockGateInput)], true);
 
@@ -266,7 +264,6 @@ void syncParameters(CorrupterAlgorithm* alg) {
   alg->persistent.unique_stereo_mode = (v[P(DistingNtParamId::kParamStereoMode)] != 0);
   alg->persistent.gate_latching = (v[P(DistingNtParamId::kParamGateMode)] == 0);
   alg->persistent.freeze_latching = (v[P(DistingNtParamId::kParamFreezeGateMode)] == 0);
-  alg->persistent.corrupt_gate_is_reset = (v[P(DistingNtParamId::kParamCorruptGateMode)] != 0);
   alg->persistent.corrupt_bank =
       (v[P(DistingNtParamId::kParamCorruptBank)] == 0) ? corrupter::CorruptBank::kLegacy
                                                         : corrupter::CorruptBank::kExpanded;
@@ -325,7 +322,6 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4) {
   corrupter::GateInputs gates;
   gates.bend_gate_v = busPtr(busFrames, numFrames, alg->gate_bend);
   gates.break_gate_v = busPtr(busFrames, numFrames, alg->gate_break);
-  gates.corrupt_gate_v = busPtr(busFrames, numFrames, alg->gate_corrupt);
   gates.freeze_gate_v = busPtr(busFrames, numFrames, alg->gate_freeze);
   gates.clock_gate_v = busPtr(busFrames, numFrames, alg->gate_clock);
 

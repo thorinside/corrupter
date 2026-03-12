@@ -30,29 +30,26 @@ enum class DistingNtParamId : uint16_t {
   kParamStereoMode = 21,
   kParamGateMode = 22,
   kParamFreezeGateMode = 23,
-  kParamCorruptGateMode = 24,
-  kParamCorruptBank = 25,
-  kParamCorruptAlgorithm = 26,
-  kParamGlitchWindow = 27,
-  kParamTimeCvInput = 28,
-  kParamRepeatsCvInput = 29,
-  kParamMixCvInput = 30,
-  kParamBendCvInput = 31,
-  kParamBreakCvInput = 32,
-  kParamCorruptCvInput = 33,
-  kParamBendGateInput = 34,
-  kParamBreakGateInput = 35,
-  kParamCorruptGateInput = 36,
-  kParamFreezeGateInput = 37,
-  kParamClockGateInput = 38,
-  kParamRandomSeedMode = 39,
-  kParamFixedSeed = 40,
-  kParamScaleFile = 41,
-  kParamScaleRoot = 42,
-  kParamCount = 43
+  kParamCorruptBank = 24,
+  kParamCorruptAlgorithm = 25,
+  kParamGlitchWindow = 26,
+  kParamTimeCvInput = 27,
+  kParamRepeatsCvInput = 28,
+  kParamMixCvInput = 29,
+  kParamBendCvInput = 30,
+  kParamBreakCvInput = 31,
+  kParamCorruptCvInput = 32,
+  kParamBendGateInput = 33,
+  kParamBreakGateInput = 34,
+  kParamFreezeGateInput = 35,
+  kParamClockGateInput = 36,
+  kParamRandomSeedMode = 37,
+  kParamFixedSeed = 38,
+  kParamScaleFile = 39,
+  kParamScaleRoot = 40,
+  kParamCount = 41
 };
 
 }  // namespace corrupter
 
 #endif  // CORRUPTER_DSP_PARAMETER_IDS_H_
-

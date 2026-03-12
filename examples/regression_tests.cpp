@@ -762,7 +762,7 @@ bool TestMicroBendOneVoltPerOct() {
   base.cfg.max_buffer_seconds = 5.0f;
   base.cfg.random_seed = 4242;
   base.state.macro_mode = false;
-  base.state.bend_enabled = false;
+  base.state.bend_enabled = true;
   base.state.break_enabled = false;
   base.knobs.time_01 = 1.0f;
   base.knobs.mix_01 = 1.0f;

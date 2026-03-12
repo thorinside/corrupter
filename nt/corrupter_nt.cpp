@@ -49,7 +49,6 @@ static const char* kEnumBreakMicro[] = {"Traverse", "Silence", nullptr};
 static const char* kEnumClockSource[] = {"Internal", "External", nullptr};
 static const char* kEnumStereo[] = {"Shared", "Unique", nullptr};
 static const char* kEnumGateMode[] = {"Latching", "Momentary", nullptr};
-static const char* kEnumCorruptGate[] = {"Toggle", "Clock Reset", nullptr};
 static const char* kEnumCorruptBank[] = {"Legacy", "Expanded", nullptr};
 static const char* kEnumCorruptAlgo[] = {"Decimate", "Dropout", "Destroy", "DJ Filter", "Vinyl Sim", nullptr};
 static const char* kEnumSeedMode[] = {"Session", "Fixed", nullptr};
@@ -65,7 +64,7 @@ static const _NT_specification specifications[] = {
 };
 
 // ---------------------------------------------------------------------------
-// Parameter definitions (44 total, matching parameter_ids.h exactly)
+// Parameter definitions (matching parameter_ids.h exactly)
 // ---------------------------------------------------------------------------
 
 static const _NT_parameter parameters[] = {
@@ -96,31 +95,29 @@ static const _NT_parameter parameters[] = {
   {.name = "Stereo",       .min = 0, .max = 1, .def = 0, .unit = kNT_unitEnum, .scaling = 0, .enumStrings = kEnumStereo},        // 21
   {.name = "Gate Mode",    .min = 0, .max = 1, .def = 0, .unit = kNT_unitEnum, .scaling = 0, .enumStrings = kEnumGateMode},      // 22
   {.name = "Freeze Gate",  .min = 0, .max = 1, .def = 0, .unit = kNT_unitEnum, .scaling = 0, .enumStrings = kEnumGateMode},      // 23
-  {.name = "Corrupt Gate", .min = 0, .max = 1, .def = 0, .unit = kNT_unitEnum, .scaling = 0, .enumStrings = kEnumCorruptGate},   // 24
-  // 25-26: Corrupt bank + algorithm
-  {.name = "Corrupt Bank", .min = 0, .max = 1, .def = 0, .unit = kNT_unitEnum, .scaling = 0, .enumStrings = kEnumCorruptBank},   // 25
-  {.name = "Corrupt Algo", .min = 0, .max = 4, .def = 0, .unit = kNT_unitEnum, .scaling = 0, .enumStrings = kEnumCorruptAlgo},   // 26
-  // 27: Glitch window
-  {.name = "Glitch Win",   .min = 0, .max = 1000, .def = 20, .unit = kNT_unitPercent, .scaling = kNT_scaling10, .enumStrings = nullptr},  // 27
-  // 28-33: CV routing
-  NT_PARAMETER_CV_INPUT("Time CV In",    0, 0)    // 28
-  NT_PARAMETER_CV_INPUT("Repeats CV In", 0, 0)    // 29
-  NT_PARAMETER_CV_INPUT("Mix CV In",     0, 0)    // 30
-  NT_PARAMETER_CV_INPUT("Bend CV In",    0, 0)    // 31
-  NT_PARAMETER_CV_INPUT("Break CV In",   0, 0)    // 32
-  NT_PARAMETER_CV_INPUT("Corrupt CV In", 0, 0)    // 33
-  // 34-38: Gate routing
-  NT_PARAMETER_CV_INPUT("Bend Gate In",    0, 0)  // 34
-  NT_PARAMETER_CV_INPUT("Break Gate In",   0, 0)  // 35
-  NT_PARAMETER_CV_INPUT("Corrupt Gate In", 0, 0)  // 36
-  NT_PARAMETER_CV_INPUT("Freeze Gate In",  0, 0)  // 37
-  NT_PARAMETER_CV_INPUT("Clock In",        0, 0)  // 38
-  // 39-40: Advanced
-  {.name = "Seed Mode",     .min = 0, .max = 1,     .def = 0, .unit = kNT_unitEnum,    .scaling = 0, .enumStrings = kEnumSeedMode},  // 39
-  {.name = "Fixed Seed",    .min = 0, .max = 32767, .def = 1, .unit = kNT_unitNone,    .scaling = 0, .enumStrings = nullptr},         // 40
-  // 41-42: Scale quantization
-  {.name = "Scale File",   .min = 0, .max = 0,     .def = 0, .unit = kNT_unitConfirm, .scaling = 0, .enumStrings = nullptr},         // 41
-  {.name = "Root Note",    .min = 0, .max = 127,   .def = 60, .unit = kNT_unitMIDINote, .scaling = 0, .enumStrings = nullptr},       // 42
+  // 24-25: Corrupt bank + algorithm
+  {.name = "Corrupt Bank", .min = 0, .max = 1, .def = 0, .unit = kNT_unitEnum, .scaling = 0, .enumStrings = kEnumCorruptBank},   // 24
+  {.name = "Corrupt Algo", .min = 0, .max = 4, .def = 0, .unit = kNT_unitEnum, .scaling = 0, .enumStrings = kEnumCorruptAlgo},   // 25
+  // 26: Glitch window
+  {.name = "Glitch Win",   .min = 0, .max = 1000, .def = 20, .unit = kNT_unitPercent, .scaling = kNT_scaling10, .enumStrings = nullptr},  // 26
+  // 27-32: CV routing
+  NT_PARAMETER_CV_INPUT("Time CV In",    0, 0)    // 27
+  NT_PARAMETER_CV_INPUT("Repeats CV In", 0, 0)    // 28
+  NT_PARAMETER_CV_INPUT("Mix CV In",     0, 0)    // 29
+  NT_PARAMETER_CV_INPUT("Bend CV In",    0, 0)    // 30
+  NT_PARAMETER_CV_INPUT("Break CV In",   0, 0)    // 31
+  NT_PARAMETER_CV_INPUT("Corrupt CV In", 0, 0)    // 32
+  // 33-36: Gate routing
+  NT_PARAMETER_CV_INPUT("Bend Gate In",    0, 0)  // 33
+  NT_PARAMETER_CV_INPUT("Break Gate In",   0, 0)  // 34
+  NT_PARAMETER_CV_INPUT("Freeze Gate In",  0, 0)  // 35
+  NT_PARAMETER_CV_INPUT("Clock In",        0, 0)  // 36
+  // 37-38: Advanced
+  {.name = "Seed Mode",     .min = 0, .max = 1,     .def = 0, .unit = kNT_unitEnum,    .scaling = 0, .enumStrings = kEnumSeedMode},  // 37
+  {.name = "Fixed Seed",    .min = 0, .max = 32767, .def = 1, .unit = kNT_unitNone,    .scaling = 0, .enumStrings = nullptr},         // 38
+  // 39-40: Scale quantization
+  {.name = "Scale File",   .min = 0, .max = 0,     .def = 0, .unit = kNT_unitConfirm, .scaling = 0, .enumStrings = nullptr},         // 39
+  {.name = "Root Note",    .min = 0, .max = 127,   .def = 60, .unit = kNT_unitMIDINote, .scaling = 0, .enumStrings = nullptr},       // 40
 };
 
 static_assert(ARRAY_SIZE(parameters) == static_cast<int>(DistingNtParamId::kParamCount),
@@ -146,7 +143,7 @@ static const uint8_t page_modes[] = {
   P(DistingNtParamId::kParamBendEnabled), P(DistingNtParamId::kParamBreakEnabled),
   P(DistingNtParamId::kParamFreezeEnabled), P(DistingNtParamId::kParamClockSource),
   P(DistingNtParamId::kParamStereoMode), P(DistingNtParamId::kParamGateMode),
-  P(DistingNtParamId::kParamFreezeGateMode), P(DistingNtParamId::kParamCorruptGateMode),
+  P(DistingNtParamId::kParamFreezeGateMode),
 };
 
 static const uint8_t page_corrupt[] = {
@@ -167,7 +164,7 @@ static const uint8_t page_cv_routing[] = {
 
 static const uint8_t page_gates[] = {
   P(DistingNtParamId::kParamBendGateInput), P(DistingNtParamId::kParamBreakGateInput),
-  P(DistingNtParamId::kParamCorruptGateInput), P(DistingNtParamId::kParamFreezeGateInput),
+  P(DistingNtParamId::kParamFreezeGateInput),
   P(DistingNtParamId::kParamClockGateInput),
 };
 
@@ -212,7 +209,7 @@ struct CorrupterAlgorithm : public _NT_algorithm {
   int out_l = 13, out_r = 14;
   bool out_l_replace = true, out_r_replace = true;
   int cv_bus[6] = {};     // time, repeats, mix, bend, break, corrupt
-  int gate_bus[5] = {};   // bend, break, corrupt, freeze, clock
+  int gate_bus[4] = {};   // bend, break, freeze, clock
 
   // Waveform display: 128 bins of peak amplitude for output visualization
   static constexpr int kWaveBins = 128;
@@ -271,9 +268,8 @@ void syncParameters(CorrupterAlgorithm* alg) {
   // Gate routing
   alg->gate_bus[0] = v[P(DistingNtParamId::kParamBendGateInput)];
   alg->gate_bus[1] = v[P(DistingNtParamId::kParamBreakGateInput)];
-  alg->gate_bus[2] = v[P(DistingNtParamId::kParamCorruptGateInput)];
-  alg->gate_bus[3] = v[P(DistingNtParamId::kParamFreezeGateInput)];
-  alg->gate_bus[4] = v[P(DistingNtParamId::kParamClockGateInput)];
+  alg->gate_bus[2] = v[P(DistingNtParamId::kParamFreezeGateInput)];
+  alg->gate_bus[3] = v[P(DistingNtParamId::kParamClockGateInput)];
 
   // Knobs
   alg->knobs.time_01            = norm01(v[P(DistingNtParamId::kParamTime)], 0, 1000);
@@ -295,7 +291,6 @@ void syncParameters(CorrupterAlgorithm* alg) {
   alg->persistent.unique_stereo_mode   = (v[P(DistingNtParamId::kParamStereoMode)] != 0);
   alg->persistent.gate_latching        = (v[P(DistingNtParamId::kParamGateMode)] == 0);
   alg->persistent.freeze_latching      = (v[P(DistingNtParamId::kParamFreezeGateMode)] == 0);
-  alg->persistent.corrupt_gate_is_reset = (v[P(DistingNtParamId::kParamCorruptGateMode)] != 0);
   alg->persistent.corrupt_bank =
       (v[P(DistingNtParamId::kParamCorruptBank)] == 0) ? corrupter::CorruptBank::kLegacy
                                                         : corrupter::CorruptBank::kExpanded;
@@ -490,9 +485,8 @@ void step(_NT_algorithm* self, float* busFrames, int numFramesBy4) {
   corrupter::GateInputs gates;
   gates.bend_gate_v    = busPtr(busFrames, numFrames, alg->gate_bus[0]);
   gates.break_gate_v   = busPtr(busFrames, numFrames, alg->gate_bus[1]);
-  gates.corrupt_gate_v = busPtr(busFrames, numFrames, alg->gate_bus[2]);
-  gates.freeze_gate_v  = busPtr(busFrames, numFrames, alg->gate_bus[3]);
-  gates.clock_gate_v   = busPtr(busFrames, numFrames, alg->gate_bus[4]);
+  gates.freeze_gate_v  = busPtr(busFrames, numFrames, alg->gate_bus[2]);
+  gates.clock_gate_v   = busPtr(busFrames, numFrames, alg->gate_bus[3]);
 
   alg->engine.process(audio, cv, gates);
 
@@ -813,8 +807,6 @@ void serialise(_NT_algorithm* self, _NT_jsonStream& stream) {
     stream.addBoolean(alg->persistent.gate_latching);
     stream.addMemberName("freeze_latching");
     stream.addBoolean(alg->persistent.freeze_latching);
-    stream.addMemberName("corrupt_gate_is_reset");
-    stream.addBoolean(alg->persistent.corrupt_gate_is_reset);
     stream.addMemberName("corrupt_bank");
     stream.addNumber(static_cast<int>(alg->persistent.corrupt_bank));
     stream.addMemberName("corrupt_algorithm");
@@ -856,7 +848,8 @@ bool deserialise(_NT_algorithm* self, _NT_jsonParse& parse) {
         } else if (parse.matchName("freeze_latching")) {
           if (!parse.boolean(alg->persistent.freeze_latching)) return false;
         } else if (parse.matchName("corrupt_gate_is_reset")) {
-          if (!parse.boolean(alg->persistent.corrupt_gate_is_reset)) return false;
+          bool unused = false;
+          if (!parse.boolean(unused)) return false;
         } else if (parse.matchName("corrupt_bank")) {
           int val = 0;
           if (!parse.number(val)) return false;
