@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -433,12 +434,20 @@ struct CorrupterModule : Module {
 
 struct CorrupterDisplay : LedDisplay {
 	CorrupterModule* module = nullptr;
+	std::string fontPath;
+
+	CorrupterDisplay() {
+		fontPath = asset::system("res/fonts/DejaVuSans.ttf");
+	}
 
 	void drawLayer(const DrawArgs& args, int layer) override {
 		if (layer != 1) {
 			LedDisplay::drawLayer(args, layer);
 			return;
 		}
+
+		// Load font for text rendering
+		std::shared_ptr<Font> font = APP->window->loadFont(fontPath);
 
 		if (!module) {
 			// Draw placeholder in module browser
@@ -447,10 +456,13 @@ struct CorrupterDisplay : LedDisplay {
 			nvgFillColor(args.vg, nvgRGB(0x0a, 0x1a, 0x2a));
 			nvgFill(args.vg);
 
-			nvgFontSize(args.vg, 10);
-			nvgFillColor(args.vg, nvgRGB(0x40, 0xc0, 0xc0));
-			nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-			nvgText(args.vg, box.size.x / 2, box.size.y / 2, "CORRUPTER", NULL);
+			if (font) {
+				nvgFontFaceId(args.vg, font->handle);
+				nvgFontSize(args.vg, 10);
+				nvgFillColor(args.vg, nvgRGB(0x40, 0xc0, 0xc0));
+				nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+				nvgText(args.vg, box.size.x / 2, box.size.y / 2, "CORRUPTER", NULL);
+			}
 
 			LedDisplay::drawLayer(args, layer);
 			return;
@@ -500,7 +512,12 @@ struct CorrupterDisplay : LedDisplay {
 		}
 
 		// Bottom text: status indicators centered over button columns
+		if (!font) {
+			LedDisplay::drawLayer(args, layer);
+			return;
+		}
 		float text_y = h - 3.f;
+		nvgFontFaceId(args.vg, font->handle);
 		nvgFontSize(args.vg, 9);
 		nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
 
