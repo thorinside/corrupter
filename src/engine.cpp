@@ -336,7 +336,7 @@ struct Engine::Impl {
       ch.xfade_remaining = PlaybackChannelState::kXfadeSamples;
       // Capture the total gain the old signal had (window + silence fade)
       // so the crossfade starts at the same level the output was at.
-      float old_gain = ComputeWindowGain(ch.phase, sub_len);
+      float old_gain = ComputeWindowGain(ch.phase, sub_len, ch.suppress_fade_in);
       if (ch.silence_duty > 0.0f) {
         const double silence_from =
             static_cast<double>(1.0f - internal::Clamp01(ch.silence_duty)) *
