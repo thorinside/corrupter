@@ -42,14 +42,15 @@ jobs:
       - name: Build plugin
         shell: bash
         run: |
-          cd vcv
+          export PLUGIN_DIR=$GITHUB_WORKSPACE/vcv
+          cd /home/build/rack-plugin-toolchain
           make ${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: vcvplugin-${{ matrix.artifact }}
-          path: vcv/plugin-build/*.vcvplugin
+          path: /home/build/rack-plugin-toolchain/plugin-build/*.vcvplugin
 
   build-mac:
     strategy:
