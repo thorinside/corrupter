@@ -8,29 +8,62 @@ on:
 permissions:
   contents: write
 
-env:
-  RACK_SDK_VERSION: "2.6.4"
-
 jobs:
-  build:
+  build-lin-win:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/qno/rack-plugin-toolchain-win-linux
+      options: --user root
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            rack-os: lin
-            rack-arch: x64
+          - target: plugin-build-lin-x64
             artifact: lin-x64
+          - target: plugin-build-win-x64
+            artifact: win-x64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/vcv/v}"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Set plugin.json version from tag
+        shell: bash
+        run: |
+          cd vcv
+          jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' plugin.json > plugin.json.tmp
+          mv plugin.json.tmp plugin.json
+
+      - name: Build plugin
+        shell: bash
+        run: |
+          cd vcv
+          make ${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcvplugin-${{ matrix.artifact }}
+          path: vcv/plugin-build/*.vcvplugin
+
+  build-mac:
+    strategy:
+      matrix:
+        include:
           - os: macos-latest
-            rack-os: mac
             rack-arch: arm64
             artifact: mac-arm64
-          - os: windows-latest
-            rack-os: win
+          - os: macos-13
             rack-arch: x64
-            artifact: win-x64
-
+            artifact: mac-x64
     runs-on: ${{ matrix.os }}
-
+    env:
+      RACK_SDK_VERSION: "2.6.4"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -53,7 +86,7 @@ jobs:
         shell: bash
         run: |
           cd vcv
-          curl -L -o rack-sdk.zip "https://vcvrack.com/downloads/Rack-SDK-${{ env.RACK_SDK_VERSION }}-${{ matrix.rack-os }}-${{ matrix.rack-arch }}.zip"
+          curl -L -o rack-sdk.zip "https://vcvrack.com/downloads/Rack-SDK-${{ env.RACK_SDK_VERSION }}-mac-${{ matrix.rack-arch }}.zip"
           unzip -o rack-sdk.zip
           rm rack-sdk.zip
 
@@ -70,9 +103,8 @@ jobs:
           path: vcv/dist/*.vcvplugin
 
   release:
-    needs: build
+    needs: [build-lin-win, build-mac]
     runs-on: ubuntu-latest
-
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4

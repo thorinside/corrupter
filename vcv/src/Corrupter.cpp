@@ -434,6 +434,11 @@ struct CorrupterModule : Module {
 
 struct CorrupterDisplay : LedDisplay {
 	CorrupterModule* module = nullptr;
+	std::string fontPath;
+
+	CorrupterDisplay() {
+		fontPath = asset::system("res/fonts/DejaVuSans.ttf");
+	}
 
 	void drawLayer(const DrawArgs& args, int layer) override {
 		if (layer != 1) {
@@ -442,7 +447,7 @@ struct CorrupterDisplay : LedDisplay {
 		}
 
 		// Load font for text rendering
-		std::shared_ptr<Font> font = APP->window->loadFont(asset::system("res/fonts/DejaVuSans.ttf"));
+		std::shared_ptr<Font> font = APP->window->loadFont(fontPath);
 
 		if (!module) {
 			// Draw placeholder in module browser
@@ -554,6 +559,88 @@ struct CorrupterWidget : ModuleWidget {
 	CorrupterWidget(CorrupterModule* module) {
 		setModule(module);
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/Corrupter.svg")));
+
+		// Screws
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+
+		// =========================================================
+		// 18 HP layout (91.44mm wide x 128.5mm tall)
+		// Spread across full height for breathing room
+		// =========================================================
+
+		// X positions for 3-column and 4-column grids
+		float x3[3] = {25.f, 45.72f, 66.44f};
+		float col[4] = {17.f, 35.48f, 53.96f, 72.44f};
+
+		// --- Audio I/O (top row) ---
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10, 17)), module, CorrupterModule::INPUT_L));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(20, 17)), module, CorrupterModule::INPUT_R));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(71.44, 17)), module, CorrupterModule::OUTPUT_L));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(81.44, 17)), module, CorrupterModule::OUTPUT_R));
+
+		// --- Row 1: TIME / REPEATS / MIX (big knobs, +5mm for label clearance) ---
+		addParam(createParamCentered<RoundBigBlackKnob>(mm2px(Vec(x3[0], 36)), module, CorrupterModule::PARAM_TIME));
+		addParam(createParamCentered<RoundBigBlackKnob>(mm2px(Vec(x3[1], 36)), module, CorrupterModule::PARAM_REPEATS));
+		addParam(createParamCentered<RoundBigBlackKnob>(mm2px(Vec(x3[2], 36)), module, CorrupterModule::PARAM_MIX));
+
+		// CV inputs below row 1 knobs
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(x3[0], 47)), module, CorrupterModule::INPUT_TIME_CV));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(x3[1], 47)), module, CorrupterModule::INPUT_REPEATS_CV));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(x3[2], 47)), module, CorrupterModule::INPUT_MIX_CV));
+
+		// --- Row 2: BEND / BREAK / CORRUPT (big knobs) ---
+		addParam(createParamCentered<RoundBigBlackKnob>(mm2px(Vec(x3[0], 63.5f)), module, CorrupterModule::PARAM_BEND));
+		addParam(createParamCentered<RoundBigBlackKnob>(mm2px(Vec(x3[1], 63.5f)), module, CorrupterModule::PARAM_BREAK));
+		addParam(createParamCentered<RoundBigBlackKnob>(mm2px(Vec(x3[2], 63.5f)), module, CorrupterModule::PARAM_CORRUPT));
+
+		// CV inputs + attenuators below row 2 knobs
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(20, 74.5f)), module, CorrupterModule::INPUT_BEND_CV));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(30, 74.5f)), module, CorrupterModule::PARAM_BEND_CV_ATTN));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(40.72, 74.5f)), module, CorrupterModule::INPUT_BREAK_CV));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(50.72, 74.5f)), module, CorrupterModule::PARAM_BREAK_CV_ATTN));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(61.44, 74.5f)), module, CorrupterModule::INPUT_CORRUPT_CV));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(71.44, 74.5f)), module, CorrupterModule::PARAM_CORRUPT_CV_ATTN));
+
+		// --- LED Display (+10mm) ---
+		{
+			CorrupterDisplay* display = createWidget<CorrupterDisplay>(mm2px(Vec(7, 82)));
+			display->box.size = mm2px(Vec(77.44, 13));
+			display->module = module;
+			addChild(display);
+		}
+
+		// --- 4 columns below display: BND / BRK / CRP / FRZ ---
+		// Enable buttons (no LEDs — screen indicators show active state)
+		float btn_y = 100.5f;
+
+		addParam(createParamCentered<VCVButton>(mm2px(Vec(col[0], btn_y)), module, CorrupterModule::PARAM_BEND_ENABLE));
+		addParam(createParamCentered<VCVButton>(mm2px(Vec(col[1], btn_y)), module, CorrupterModule::PARAM_BREAK_ENABLE));
+		addParam(createParamCentered<VCVButton>(mm2px(Vec(col[2], btn_y)), module, CorrupterModule::PARAM_FREEZE_ENABLE));
+		addParam(createParamCentered<VCVButton>(mm2px(Vec(col[3], btn_y)), module, CorrupterModule::PARAM_CORRUPT_ALGO));
+
+		// Gate inputs
+		float gate_y = 108.f;
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(col[0], gate_y)), module, CorrupterModule::INPUT_BEND_GATE));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(col[1], gate_y)), module, CorrupterModule::INPUT_BREAK_GATE));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(col[2], gate_y)), module, CorrupterModule::INPUT_FREEZE_GATE));
+
+		// --- Bottom section: utilities (moved down for breathing room) ---
+		float bot_y = 117.f;
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(10, bot_y)), module, CorrupterModule::PARAM_GLITCH_WINDOW));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(22, bot_y)), module, CorrupterModule::INPUT_CLOCK));
+
+		// Settings buttons: MODE, SLNC, STER — LEDs below buttons
+		addParam(createParamCentered<VCVButton>(mm2px(Vec(col[1], bot_y)), module, CorrupterModule::PARAM_MODE));
+		addChild(createLightCentered<SmallLight<GreenRedLight>>(mm2px(Vec(col[1], bot_y + 4.0f)), module, CorrupterModule::LIGHT_MODE_GREEN));
+
+		addParam(createParamCentered<VCVButton>(mm2px(Vec(col[2], bot_y)), module, CorrupterModule::PARAM_BREAK_MICRO_MODE));
+		addChild(createLightCentered<SmallLight<GreenLight>>(mm2px(Vec(col[2], bot_y + 4.0f)), module, CorrupterModule::LIGHT_BREAK_MICRO));
+
+		addParam(createParamCentered<VCVButton>(mm2px(Vec(col[3], bot_y)), module, CorrupterModule::PARAM_STEREO_MODE));
+		addChild(createLightCentered<SmallLight<GreenLight>>(mm2px(Vec(col[3], bot_y + 4.0f)), module, CorrupterModule::LIGHT_STEREO));
 	}
 
 	void appendContextMenu(Menu* menu) override {
