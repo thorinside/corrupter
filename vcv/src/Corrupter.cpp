@@ -20,6 +20,55 @@ static const char* kAlgoNames[] = {
 };
 
 // ---------------------------------------------------------------------------
+// Scale definitions (ratios, last entry is the period = 2.0 for octave scales)
+// ---------------------------------------------------------------------------
+
+struct ScaleDef {
+	const char* name;
+	const double* ratios;
+	uint32_t num_notes;
+};
+
+static const double kChromatic[] = {
+	16.0/15.0, 9.0/8.0, 6.0/5.0, 5.0/4.0, 4.0/3.0, 45.0/32.0,
+	3.0/2.0, 8.0/5.0, 5.0/3.0, 9.0/5.0, 15.0/8.0, 2.0
+};
+static const double kMajor[] = {
+	9.0/8.0, 5.0/4.0, 4.0/3.0, 3.0/2.0, 5.0/3.0, 15.0/8.0, 2.0
+};
+static const double kMinor[] = {
+	9.0/8.0, 6.0/5.0, 4.0/3.0, 3.0/2.0, 8.0/5.0, 9.0/5.0, 2.0
+};
+static const double kPentatonicMaj[] = {
+	9.0/8.0, 5.0/4.0, 3.0/2.0, 5.0/3.0, 2.0
+};
+static const double kPentatonicMin[] = {
+	6.0/5.0, 4.0/3.0, 3.0/2.0, 9.0/5.0, 2.0
+};
+static const double kWholeTone[] = {
+	9.0/8.0, 5.0/4.0, 45.0/32.0, 8.0/5.0, 9.0/5.0, 2.0
+};
+static const double kOctaves[] = { 2.0 };
+static const double kFifths[] = { 3.0/2.0, 2.0 };
+
+static const ScaleDef kScales[] = {
+	{ "None (free)",       nullptr,         0 },
+	{ "Chromatic",         kChromatic,     12 },
+	{ "Major",             kMajor,          7 },
+	{ "Minor",             kMinor,          7 },
+	{ "Pentatonic Major",  kPentatonicMaj,  5 },
+	{ "Pentatonic Minor",  kPentatonicMin,  5 },
+	{ "Whole Tone",        kWholeTone,      6 },
+	{ "Octaves",           kOctaves,        1 },
+	{ "Fifths",            kFifths,         2 },
+};
+static constexpr int kNumScales = static_cast<int>(sizeof(kScales) / sizeof(kScales[0]));
+
+static const char* kRootNames[] = {
+	"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+};
+
+// ---------------------------------------------------------------------------
 // Module
 // ---------------------------------------------------------------------------
 
@@ -73,6 +122,8 @@ struct CorrupterModule : Module {
 
 	// Right-click menu settings (index into option lists)
 	int gate_mode_index = 0;    // 0=Latching, 1=Momentary
+	int scale_index = 0;        // index into kScales[]
+	int scale_root = 0;         // 0=C, 1=C#, ... 11=B
 
 	// Block accumulation buffers
 	float in_l_buf[kMaxBlockFrames] = {};
@@ -188,6 +239,7 @@ struct CorrupterModule : Module {
 		if (initialised) {
 			engine.set_audio_context(sampleRate, kMaxBlockFrames);
 			engine.set_persistent_state(persistent);
+			applyScale();
 		}
 
 		// Reset block buffers
@@ -198,6 +250,17 @@ struct CorrupterModule : Module {
 
 	void onSampleRateChange() override {
 		initEngine(APP->engine->getSampleRate());
+	}
+
+	void applyScale() {
+		if (!initialised) return;
+		if (scale_index > 0 && scale_index < kNumScales) {
+			const ScaleDef& s = kScales[scale_index];
+			engine.load_scale(s.ratios, s.num_notes);
+		} else {
+			engine.clear_scale();
+		}
+		engine.set_scale_root(60 + scale_root);  // MIDI note: C4 + semitones
 	}
 
 	void processBlock() {
@@ -404,6 +467,8 @@ struct CorrupterModule : Module {
 		json_object_set_new(root, "corrupt_algorithm", json_integer(static_cast<int>(persistent.corrupt_algorithm)));
 		json_object_set_new(root, "glitch_window_01", json_real(persistent.glitch_window_01));
 		json_object_set_new(root, "gate_mode_index", json_integer(gate_mode_index));
+		json_object_set_new(root, "scale_index", json_integer(scale_index));
+		json_object_set_new(root, "scale_root", json_integer(scale_root));
 		return root;
 	}
 
@@ -421,9 +486,12 @@ struct CorrupterModule : Module {
 		if ((j = json_object_get(root, "corrupt_algorithm"))) persistent.corrupt_algorithm = static_cast<corrupter::CorruptAlgorithm>(json_integer_value(j));
 		if ((j = json_object_get(root, "glitch_window_01"))) persistent.glitch_window_01 = static_cast<float>(json_real_value(j));
 		if ((j = json_object_get(root, "gate_mode_index"))) gate_mode_index = json_integer_value(j);
+		if ((j = json_object_get(root, "scale_index"))) scale_index = json_integer_value(j);
+		if ((j = json_object_get(root, "scale_root"))) scale_root = json_integer_value(j);
 		if (initialised) {
 			engine.set_persistent_state(persistent);
 			engine.set_clock_mode_internal(clock_internal);
+			applyScale();
 		}
 	}
 };
@@ -652,6 +720,31 @@ struct CorrupterWidget : ModuleWidget {
 		menu->addChild(createIndexPtrSubmenuItem("Gate Mode",
 			{"Latching", "Momentary"},
 			&module->gate_mode_index));
+
+		menu->addChild(new MenuSeparator);
+		menu->addChild(createMenuLabel("Bend Quantize"));
+
+		// Scale selection
+		{
+			std::vector<std::string> scaleNames;
+			for (int i = 0; i < kNumScales; i++)
+				scaleNames.push_back(kScales[i].name);
+			menu->addChild(createIndexSubmenuItem("Scale", scaleNames,
+				[=]() { return module->scale_index; },
+				[=](int idx) { module->scale_index = idx; module->applyScale(); }
+			));
+		}
+
+		// Root note selection
+		{
+			std::vector<std::string> rootNames;
+			for (int i = 0; i < 12; i++)
+				rootNames.push_back(kRootNames[i]);
+			menu->addChild(createIndexSubmenuItem("Root", rootNames,
+				[=]() { return module->scale_root; },
+				[=](int idx) { module->scale_root = idx; module->applyScale(); }
+			));
+		}
 	}
 };
 
