@@ -61,10 +61,12 @@ struct PlaybackChannelState {
   internal::CorruptChannelState corrupt;
 
   // Crossfade state for tick transitions
-  static constexpr uint32_t kXfadeSamples = 128;
+  static constexpr uint32_t kXfadeSamples = 256;
   uint32_t xfade_remaining = 0;      // samples left in crossfade (0 = inactive)
   double xfade_read_index = 0.0;     // old segment read position at tick
   float xfade_rate = 1.0f;           // old segment playback rate
+  float xfade_old_window = 1.0f;     // window gain at tick (applied to old signal)
+  bool suppress_fade_in = false;     // true after tick reset, cleared on natural wrap
 
   void Reset() {
     phase = 0.0;
@@ -87,6 +89,8 @@ struct PlaybackChannelState {
     xfade_remaining = 0;
     xfade_read_index = 0.0;
     xfade_rate = 1.0f;
+    xfade_old_window = 1.0f;
+    suppress_fade_in = false;
   }
 };
 
@@ -286,7 +290,8 @@ struct Engine::Impl {
     return 1u + static_cast<uint32_t>(internal::Clamp01(repeats_01) * 31.0f);
   }
 
-  float ComputeWindowGain(double phase, uint32_t subsection_len) const {
+  float ComputeWindowGain(double phase, uint32_t subsection_len,
+                          bool fade_out_only = false) const {
     if (subsection_len <= 1u) {
       return 1.0f;
     }
@@ -299,7 +304,7 @@ struct Engine::Impl {
     const float fade = std::max(kMinFadeSamples,
         fade_ratio * static_cast<float>(subsection_len));
 
-    const float from_start = static_cast<float>(phase) / fade;
+    const float from_start = fade_out_only ? 1.0f : static_cast<float>(phase) / fade;
     const float from_end =
         (static_cast<float>(subsection_len) - static_cast<float>(phase) - 1.0f) / fade;
     const float t = internal::Clamp(std::min(from_start, from_end), 0.0f, 1.0f);
@@ -325,6 +330,22 @@ struct Engine::Impl {
       ch.xfade_read_index = static_cast<double>(subsection_start) + read_pos;
       ch.xfade_rate = ch.rate_smoother.value;
       ch.xfade_remaining = PlaybackChannelState::kXfadeSamples;
+      // Capture the total gain the old signal had (window + silence fade)
+      // so the crossfade starts at the same level the output was at.
+      float old_gain = ComputeWindowGain(ch.phase, sub_len);
+      if (ch.silence_duty > 0.0f) {
+        const double silence_from =
+            static_cast<double>(1.0f - internal::Clamp01(ch.silence_duty)) *
+            static_cast<double>(sub_len);
+        if (static_cast<double>(ch.phase) >= silence_from) {
+          constexpr float kSilenceFade = 64.0f;
+          const float into_silence =
+              static_cast<float>(static_cast<double>(ch.phase) - silence_from);
+          old_gain *= 1.0f - internal::Clamp01(into_silence / kSilenceFade);
+        }
+      }
+      ch.xfade_old_window = old_gain;
+      ch.suppress_fade_in = true;
     }
 
     const uint32_t period =
@@ -869,12 +890,18 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
       const double read_index = static_cast<double>(subsection_start) + read_pos;
       float wet = ReadBufferCubic(buffer, impl_->buffer_frames, read_index);
 
-      const float window = impl_->ComputeWindowGain(pcs.phase, sub_len);
+      // Window: after a tick reset, suppress fade-in (crossfade handles transition).
+      // The fade-out still applies so the end of the segment ramps to zero.
+      const float window = impl_->ComputeWindowGain(
+          pcs.phase, sub_len, pcs.suppress_fade_in);
       wet *= window;
 
       // Crossfade from old segment on tick transitions
       if (pcs.xfade_remaining > 0u) {
-        const float old_wet = ReadBufferCubic(buffer, impl_->buffer_frames, pcs.xfade_read_index);
+        float old_wet = ReadBufferCubic(buffer, impl_->buffer_frames, pcs.xfade_read_index);
+        // Apply the window gain the old signal had at the tick, so there's
+        // no discontinuity from windowed→unwindowed at the transition.
+        old_wet *= pcs.xfade_old_window;
         const float xf = static_cast<float>(pcs.xfade_remaining) /
                          static_cast<float>(PlaybackChannelState::kXfadeSamples);
         wet = wet * (1.0f - xf) + old_wet * xf;
@@ -887,8 +914,8 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
             static_cast<double>(1.0f - internal::Clamp01(pcs.silence_duty)) *
             static_cast<double>(sub_len);
         if (pcs.phase >= silence_from) {
-          // Short 8-sample fade to avoid the hardest clicks but keep the punch
-          constexpr float kSilenceFade = 8.0f;
+          // Fade to silence over 64 samples (~1.3ms at 48kHz)
+          constexpr float kSilenceFade = 64.0f;
           const float into_silence = static_cast<float>(pcs.phase - silence_from);
           const float fade = 1.0f - internal::Clamp01(into_silence / kSilenceFade);
           wet *= fade;
@@ -913,6 +940,8 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
       if (pcs.phase >= static_cast<double>(sub_len)) {
         pcs.phase = internal::WrapPositive(
             pcs.phase, static_cast<double>(sub_len));
+        // Natural subsection wrap — re-enable window fade-in for loop smoothing
+        pcs.suppress_fade_in = false;
       }
 
       const float mix_cv = CvOrZero(cv.mix_v, i) * 0.2f;
