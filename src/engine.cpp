@@ -61,12 +61,14 @@ struct PlaybackChannelState {
   internal::CorruptChannelState corrupt;
 
   // Crossfade state for tick transitions
-  static constexpr uint32_t kXfadeSamples = 256;
+  static constexpr uint32_t kXfadeSamples = 16;
   uint32_t xfade_remaining = 0;      // samples left in crossfade (0 = inactive)
   double xfade_read_index = 0.0;     // old segment read position at tick
   float xfade_rate = 1.0f;           // old segment playback rate
   float xfade_old_window = 1.0f;     // window gain at tick (applied to old signal)
   bool suppress_fade_in = false;     // true after tick reset, cleared on natural wrap
+  float xfade_prev_old = 0.0f;      // previous old_wet for zero-crossing detection
+  bool xfade_old_zeroed = false;     // true once old_wet crosses zero
 
   void Reset() {
     phase = 0.0;
@@ -91,6 +93,8 @@ struct PlaybackChannelState {
     xfade_rate = 1.0f;
     xfade_old_window = 1.0f;
     suppress_fade_in = false;
+    xfade_prev_old = 0.0f;
+    xfade_old_zeroed = false;
   }
 };
 
@@ -345,6 +349,8 @@ struct Engine::Impl {
         }
       }
       ch.xfade_old_window = old_gain;
+      ch.xfade_prev_old = 0.0f;
+      ch.xfade_old_zeroed = false;
       ch.suppress_fade_in = true;
     }
 
@@ -896,12 +902,22 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
           pcs.phase, sub_len, pcs.suppress_fade_in);
       wet *= window;
 
-      // Crossfade from old segment on tick transitions
+      // Crossfade from old segment on tick transitions, with zero-crossing exit
       if (pcs.xfade_remaining > 0u) {
-        float old_wet = ReadBufferCubic(buffer, impl_->buffer_frames, pcs.xfade_read_index);
-        // Apply the window gain the old signal had at the tick, so there's
-        // no discontinuity from windowed→unwindowed at the transition.
-        old_wet *= pcs.xfade_old_window;
+        float old_wet = 0.0f;
+        if (!pcs.xfade_old_zeroed) {
+          old_wet = ReadBufferCubic(buffer, impl_->buffer_frames, pcs.xfade_read_index);
+          old_wet *= pcs.xfade_old_window;
+          // Detect zero crossing in old signal — once it crosses zero,
+          // freeze it at zero so the new signal takes over cleanly.
+          const bool zc = (pcs.xfade_prev_old > 0.0f && old_wet <= 0.0f) ||
+                          (pcs.xfade_prev_old < 0.0f && old_wet >= 0.0f);
+          pcs.xfade_prev_old = old_wet;
+          if (zc) {
+            pcs.xfade_old_zeroed = true;
+            old_wet = 0.0f;
+          }
+        }
         const float xf = static_cast<float>(pcs.xfade_remaining) /
                          static_cast<float>(PlaybackChannelState::kXfadeSamples);
         wet = wet * (1.0f - xf) + old_wet * xf;
