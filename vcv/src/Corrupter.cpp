@@ -434,11 +434,6 @@ struct CorrupterModule : Module {
 
 struct CorrupterDisplay : LedDisplay {
 	CorrupterModule* module = nullptr;
-	std::string fontPath;
-
-	CorrupterDisplay() {
-		fontPath = asset::system("res/fonts/DejaVuSans.ttf");
-	}
 
 	void drawLayer(const DrawArgs& args, int layer) override {
 		if (layer != 1) {
@@ -447,7 +442,7 @@ struct CorrupterDisplay : LedDisplay {
 		}
 
 		// Load font for text rendering
-		std::shared_ptr<Font> font = APP->window->loadFont(fontPath);
+		std::shared_ptr<Font> font = APP->window->loadFont(asset::system("res/fonts/DejaVuSans.ttf"));
 
 		if (!module) {
 			// Draw placeholder in module browser
