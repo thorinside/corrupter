@@ -387,6 +387,15 @@ struct CorrupterModule : Module {
 		lights[LIGHT_CLOCK_SOURCE].setBrightness(clock_internal ? 0.f : 1.f);
 		current_algo = static_cast<int>(persistent.corrupt_algorithm);
 
+		// Update button tooltips to reflect current state
+		paramQuantities[PARAM_BEND_ENABLE]->description = persistent.bend_enabled ? "ON" : "OFF";
+		paramQuantities[PARAM_BREAK_ENABLE]->description = persistent.break_enabled ? "ON" : "OFF";
+		paramQuantities[PARAM_FREEZE_ENABLE]->description = persistent.freeze_enabled ? "ON" : "OFF";
+		paramQuantities[PARAM_MODE]->description = persistent.macro_mode ? "Macro" : "Micro";
+		paramQuantities[PARAM_CORRUPT_ALGO]->description = (current_algo >= 0 && current_algo <= 4) ? kAlgoNames[current_algo] : "";
+		paramQuantities[PARAM_BREAK_MICRO_MODE]->description = persistent.break_silence_mode ? "Silence ON" : "Silence OFF";
+		paramQuantities[PARAM_STEREO_MODE]->description = persistent.unique_stereo_mode ? "Stereo ON" : "Stereo OFF";
+
 		// Update waveform display
 		float sr = APP->engine->getSampleRate();
 		uint32_t buf_frames = static_cast<uint32_t>(kMaxBufferSeconds * sr);
@@ -620,6 +629,81 @@ struct CorrupterDisplay : LedDisplay {
 };
 
 // ---------------------------------------------------------------------------
+// Panel Label Overlay (NanoVG text replaces SVG path text)
+// ---------------------------------------------------------------------------
+
+struct CorrupterLabels : TransparentWidget {
+	std::string fontPath;
+
+	CorrupterLabels() {
+		fontPath = asset::system("res/fonts/DejaVuSans.ttf");
+	}
+
+	void drawLayer(const DrawArgs& args, int layer) override {
+		if (layer != 1) {
+			TransparentWidget::drawLayer(args, layer);
+			return;
+		}
+
+		std::shared_ptr<Font> font = APP->window->loadFont(fontPath);
+		if (!font) {
+			TransparentWidget::drawLayer(args, layer);
+			return;
+		}
+
+		NVGcontext* vg = args.vg;
+		nvgFontFaceId(vg, font->handle);
+
+		float x3[3] = {25.f, 45.72f, 66.44f};
+		float col[4] = {17.f, 35.48f, 53.96f, 72.44f};
+		float ppmm = box.size.x / 91.44f;
+		auto px = [ppmm](float mm) -> float { return mm * ppmm; };
+
+		NVGcolor colKnob   = nvgRGB(0x90, 0xb0, 0xd0);
+		NVGcolor colIO     = nvgRGB(0x90, 0xb0, 0xd0);
+		NVGcolor colBottom = nvgRGB(0x70, 0x90, 0xb0);
+
+		// --- I/O labels ---
+		nvgFontSize(vg, 8);
+		nvgFillColor(vg, colIO);
+		nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
+		nvgText(vg, px(10.f), px(12.8f), "IN L", NULL);
+		nvgText(vg, px(20.f), px(12.8f), "IN R", NULL);
+		nvgText(vg, px(71.44f), px(12.8f), "OUT L", NULL);
+		nvgText(vg, px(81.44f), px(12.8f), "OUT R", NULL);
+
+		// --- Row 1 knob labels ---
+		nvgFontSize(vg, 9);
+		nvgFillColor(vg, colKnob);
+		nvgText(vg, px(x3[0]), px(28.f), "TIME", NULL);
+		nvgText(vg, px(x3[1]), px(28.f), "REPEATS", NULL);
+		nvgText(vg, px(x3[2]), px(28.f), "MIX", NULL);
+
+		// --- Row 2 knob labels ---
+		nvgText(vg, px(x3[0]), px(55.5f), "BEND", NULL);
+		nvgText(vg, px(x3[1]), px(55.5f), "BREAK", NULL);
+		nvgText(vg, px(x3[2]), px(55.5f), "CORRUPT", NULL);
+
+		// --- Button labels (above buttons at y=100.5) ---
+		nvgText(vg, px(col[0]), px(98.f), "BEND", NULL);
+		nvgText(vg, px(col[1]), px(98.f), "BREAK", NULL);
+		nvgText(vg, px(col[2]), px(98.f), "FREEZE", NULL);
+		nvgText(vg, px(col[3]), px(98.f), "ALGO", NULL);
+
+		// --- Bottom section labels ---
+		nvgFontSize(vg, 8);
+		nvgFillColor(vg, colBottom);
+		nvgText(vg, px(10.f), px(115.8f), "GW", NULL);
+		nvgText(vg, px(22.f), px(115.8f), "CLK IN", NULL);
+		nvgText(vg, px(col[1]), px(115.8f), "MODE", NULL);
+		nvgText(vg, px(col[2]), px(115.8f), "SLNC", NULL);
+		nvgText(vg, px(col[3]), px(115.8f), "ST MODE", NULL);
+
+		TransparentWidget::drawLayer(args, layer);
+	}
+};
+
+// ---------------------------------------------------------------------------
 // Widget
 // ---------------------------------------------------------------------------
 
@@ -627,6 +711,13 @@ struct CorrupterWidget : ModuleWidget {
 	CorrupterWidget(CorrupterModule* module) {
 		setModule(module);
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/Corrupter.svg")));
+
+		// Panel text labels (rendered via NanoVG)
+		{
+			CorrupterLabels* labels = createWidget<CorrupterLabels>(Vec(0, 0));
+			labels->box.size = box.size;
+			addChild(labels);
+		}
 
 		// Screws
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
@@ -674,7 +765,7 @@ struct CorrupterWidget : ModuleWidget {
 
 		// --- LED Display (+10mm) ---
 		{
-			CorrupterDisplay* display = createWidget<CorrupterDisplay>(mm2px(Vec(7, 82)));
+			CorrupterDisplay* display = createWidget<CorrupterDisplay>(mm2px(Vec(7, 81.3)));
 			display->box.size = mm2px(Vec(77.44, 13));
 			display->module = module;
 			addChild(display);
@@ -682,7 +773,7 @@ struct CorrupterWidget : ModuleWidget {
 
 		// --- 4 columns below display: BND / BRK / CRP / FRZ ---
 		// Enable buttons (no LEDs — screen indicators show active state)
-		float btn_y = 100.5f;
+		float btn_y = 100.75f;
 
 		addParam(createParamCentered<VCVButton>(mm2px(Vec(col[0], btn_y)), module, CorrupterModule::PARAM_BEND_ENABLE));
 		addParam(createParamCentered<VCVButton>(mm2px(Vec(col[1], btn_y)), module, CorrupterModule::PARAM_BREAK_ENABLE));
@@ -690,13 +781,13 @@ struct CorrupterWidget : ModuleWidget {
 		addParam(createParamCentered<VCVButton>(mm2px(Vec(col[3], btn_y)), module, CorrupterModule::PARAM_CORRUPT_ALGO));
 
 		// Gate inputs
-		float gate_y = 108.f;
+		float gate_y = 108.25f;
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(col[0], gate_y)), module, CorrupterModule::INPUT_BEND_GATE));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(col[1], gate_y)), module, CorrupterModule::INPUT_BREAK_GATE));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(col[2], gate_y)), module, CorrupterModule::INPUT_FREEZE_GATE));
 
 		// --- Bottom section: utilities (moved down for breathing room) ---
-		float bot_y = 117.f;
+		float bot_y = 118.5f;
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(10, bot_y)), module, CorrupterModule::PARAM_GLITCH_WINDOW));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(22, bot_y)), module, CorrupterModule::INPUT_CLOCK));
 

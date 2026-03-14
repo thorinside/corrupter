@@ -8,7 +8,7 @@
   "authorEmail": "",
   "authorUrl": "",
   "pluginUrl": "",
-  "manualUrl": "",
+  "manualUrl": "https://github.com/thorinside/corrupter/blob/main/vcv/docs/manual.md",
   "sourceUrl": "",
   "donateUrl": "",
   "changelogUrl": "",
@@ -17,6 +17,7 @@
       "slug": "Corrupter",
       "name": "Corrupter",
       "description": "Data Bender-style circuit-bent stereo buffer effect",
+      "manualUrl": "https://github.com/thorinside/corrupter/blob/main/vcv/docs/manual.md",
       "tags": [
         "Effect",
         "Delay",
