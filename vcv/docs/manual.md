@@ -51,7 +51,7 @@ Audio In (L/R) --> Internal Buffer (up to 30s) --> DSP Engine --> Audio Out (L/R
 
 - If only **IN L** is connected, it is normalled (copied) to **IN R**, producing a dual-mono signal.
 - The DSP engine processes audio in blocks of 256 frames internally.
-- The buffer length is controlled by the **TIME** knob and can be externally clocked via **CLK IN**.
+- The buffer length is controlled by the **TIME** knob and can be externally clocked via the **CLOCK** input.
 
 ---
 
@@ -62,8 +62,8 @@ From top to bottom:
 ```
 +----------------------------------------------+
 |               CORRUPTER                       |
-| IN L   IN R                    OUT L   OUT R  |
-|  [o]    [o]                     [o]     [o]   |
+| IN L   IN R   CLOCK            OUT L   OUT R  |
+|  [o]    [o]    [o]              [o]     [o]   |
 |                                               |
 |       TIME       REPEATS        MIX           |
 |       (  )        (  )         (  )           |
@@ -77,10 +77,10 @@ From top to bottom:
 |                                               |
 |   BEND    BREAK    FREEZE    ALGO             |
 |   [btn]   [btn]    [btn]    [btn]             |
-|   [gate]  [gate]   [gate]                     |
+|   [gate]  [gate]   [gate]   (GW)              |
 |                                               |
-|  GW  CLK IN  MODE    SLNC    ST MODE          |
-|  (a)  [o]    [btn]   [btn]   [btn]            |
+|       MODE       SLNC        ST MODE          |
+|       [btn]      [btn]       [btn]            |
 |                                               |
 |            NO SUCH DEVICE                     |
 +----------------------------------------------+
@@ -99,6 +99,7 @@ From top to bottom:
 |------|------|-------------|
 | **IN L** | Input | Left audio input. |
 | **IN R** | Input | Right audio input. If unpatched, receives a copy of IN L. |
+| **CLOCK** | Input | External clock input. When a cable is connected, the module automatically switches from its internal clock to the external clock. Disconnect to return to internal clock. |
 | **OUT L** | Output | Left audio output (processed signal). |
 | **OUT R** | Output | Right audio output (processed signal). |
 
@@ -186,13 +187,14 @@ Four buttons are arranged in a row below the display. Each button's tooltip upda
 
 ### Gate Inputs
 
-Three gate input jacks sit below the **BEND**, **BREAK**, and **FREEZE** buttons. These allow external control of each effect's on/off state.
+Three gate input jacks sit below the **BEND**, **BREAK**, and **FREEZE** buttons. These allow external control of each effect's on/off state. The **GW** (Glitch Window) trimpot sits at the end of this row.
 
-| Input | Controls |
-|-------|----------|
-| **BEND GATE** | Bend effect enable |
-| **BREAK GATE** | Break effect enable |
-| **FREEZE GATE** | Freeze enable |
+| Control | Type | Description |
+|---------|------|-------------|
+| **BEND GATE** | Gate input | Bend effect enable |
+| **BREAK GATE** | Gate input | Break effect enable |
+| **FREEZE GATE** | Gate input | Freeze enable |
+| **GW** (Glitch Window) | Trimpot (0--100%, default 2%) | Controls the size of the glitch window. Smaller values produce tighter, more precise glitches; larger values create longer, more dramatic disruptions. |
 
 Gate behaviour depends on the **Gate Mode** setting (see [Right-Click Menu](#right-click-menu)):
 
@@ -203,15 +205,13 @@ Gate behaviour depends on the **Gate Mode** setting (see [Right-Click Menu](#rig
 
 ### Bottom Section
 
-The bottom row contains utility controls, separated from the rest by a thin line -- a kind of bureaucratic border crossing for your signal.
+The bottom row contains settings buttons, aligned under the three main knob columns.
 
-| Control | Type | Range/Default | Description |
-|---------|------|---------------|-------------|
-| **GW** (Glitch Window) | Trimpot | 0--100%, default 2% | Controls the size of the glitch window. Smaller values produce tighter, more precise glitches; larger values create longer, more dramatic disruptions. |
-| **CLK IN** | Input jack | -- | External clock input. When a cable is connected, the module automatically switches from its internal clock to the external clock. Disconnect to return to internal clock. |
-| **MODE** | Button | -- | Toggles between Macro and Micro mode. Green LED = Macro, red LED = Micro. |
-| **SLNC** | Button | -- | Toggles Break Silence mode. When enabled (green LED), breaks introduce silence rather than stuttered audio. |
-| **ST MODE** | Button | -- | Toggles Unique Stereo mode. When enabled (green LED), left and right channels are processed independently for wider stereo glitch effects. |
+| Control | Type | Description |
+|---------|------|-------------|
+| **MODE** | Button | Toggles between Macro and Micro mode. Green LED = Macro, red LED = Micro. |
+| **SLNC** | Button | Toggles Break Silence mode. When enabled (green LED), breaks introduce silence rather than stuttered audio. |
+| **ST MODE** | Button | Toggles Unique Stereo mode. When enabled (green LED), left and right channels are processed independently for wider stereo glitch effects. |
 
 ---
 
