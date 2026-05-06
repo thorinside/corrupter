@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 enable_testing()
 option(CORRUPTER_ENABLE_COVERAGE "Enable coverage instrumentation for tests" OFF)
+option(CORRUPTER_BUILD_SPECTRAL_TESTS "Build spectral audio quality test harness" ON)
 
 if(CORRUPTER_ENABLE_COVERAGE)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -78,6 +79,10 @@ target_link_libraries(corrupter_dsp_benchmark
   PRIVATE
     corrupter_dsp
 )
+
+if(CORRUPTER_BUILD_SPECTRAL_TESTS AND NOT CORRUPTER_ENABLE_COVERAGE)
+  add_subdirectory(tests/spectral)
+endif()
 
 if(CORRUPTER_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   find_program(CORRUPTER_LLVM_PROFDATA llvm-profdata)

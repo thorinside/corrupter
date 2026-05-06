@@ -32,6 +32,12 @@ struct CorruptChannelState {
   float vinyl_pop_sign = 1.0f;
   float vinyl_tone_hp = 0.0f;
   float vinyl_last_tone_in = 0.0f;
+
+  // 2x oversampled Destroy state. destroy_in[0] = newest input.
+  // destroy_us[0] = newest 2x-rate sample (w_odd, time 2k+1).
+  // destroy_us[1] = w_even at time 2k. Older samples at higher indices.
+  float destroy_in[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float destroy_us[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 float ProcessCorruptSample(float x, float intensity, CorruptBank bank, CorruptAlgorithm algo,

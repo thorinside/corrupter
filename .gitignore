@@ -2,3 +2,6 @@ build/
 build-coverage/
 nt/build/
 nt/plugins/
+Testing/
+.DS_Store
+.project

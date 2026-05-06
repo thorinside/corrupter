@@ -58,6 +58,7 @@ struct PlaybackChannelState {
   float tape_drive = 0.0f;
   float tape_color_coeff = 0.0f;
   float tape_color_lp = 0.0f;
+  OnePole tape_drive_smoother;
   internal::CorruptChannelState corrupt;
 
   // Crossfade state for tick transitions
@@ -87,6 +88,7 @@ struct PlaybackChannelState {
     tape_color_coeff = 0.0f;
     tape_color_lp = 0.0f;
     rate_smoother.Reset(1.0f);
+    tape_drive_smoother.Reset(0.0f);
     corrupt = {};
     xfade_remaining = 0;
     xfade_read_index = 0.0;
@@ -272,6 +274,7 @@ struct Engine::Impl {
   bool pending_freeze_toggle = false;
   bool corrupt_enabled = false;
   float freeze_write_fade = 1.0f;  // 1.0 = writing, 0.0 = frozen
+  OnePole corrupt_smoother;        // ~5 ms slew on corrupt-CV; kills zipper
 
   void ResetPlayback() {
     segment = {};
@@ -281,7 +284,12 @@ struct Engine::Impl {
     segment.subsection_length = segment.length;
     channels[0].Reset();
     channels[1].Reset();
+    for (int ch = 0; ch < 2; ++ch) {
+      channels[ch].tape_drive_smoother.SetTimeMs(15.0f, runtime_sample_rate_hz);
+    }
     freeze_write_fade = 1.0f;
+    corrupt_smoother.SetTimeMs(10.0f, runtime_sample_rate_hz);
+    corrupt_smoother.Reset(internal::Clamp01(knobs.corrupt_01));
   }
 
   float EffectiveUnipolar(float knob, float cv_volts, float atten_01) const {
@@ -623,6 +631,10 @@ void Engine::set_audio_context(float sample_rate_hz, uint32_t max_block_frames) 
   if (std::fabs(clamped_sr - impl_->runtime_sample_rate_hz) > 1e-6f) {
     impl_->runtime_sample_rate_hz = clamped_sr;
     impl_->clock.SetSampleRate(clamped_sr, impl_->processed_frames);
+    impl_->corrupt_smoother.SetTimeMs(10.0f, clamped_sr);
+    for (int ch = 0; ch < 2; ++ch) {
+      impl_->channels[ch].tape_drive_smoother.SetTimeMs(15.0f, clamped_sr);
+    }
   }
 
   if (max_block_frames > 0u) {
@@ -824,6 +836,7 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
     const float corrupt_eff =
         impl_->EffectiveUnipolar(impl_->knobs.corrupt_01, CvOrZero(cv.corrupt_v, i),
                                  impl_->knobs.corrupt_cv_attn_01);
+    const float corrupt_smoothed = impl_->corrupt_smoother.Tick(corrupt_eff);
 
     if (tick) {
       ++impl_->observed_ticks;
@@ -938,8 +951,13 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
         }
       }
 
-      if ((pcs.tape_drive > 0.0f) || (pcs.tape_color_coeff > 0.0f)) {
-        const float driven = std::tanh(wet * (1.0f + pcs.tape_drive));
+      // Tape stage: tape_drive is a tick-rate target; smooth per-sample to
+      // avoid the click each clock tick imposed when bend changes the drive
+      // setpoint. tape_color_coeff already feeds an internal one-pole state
+      // so we leave it on the unsmoothed value.
+      const float drive_smooth = pcs.tape_drive_smoother.Tick(pcs.tape_drive);
+      if ((drive_smooth > 1e-4f) || (pcs.tape_color_coeff > 0.0f)) {
+        const float driven = std::tanh(wet * (1.0f + drive_smooth));
         const float a = internal::Clamp(pcs.tape_color_coeff, 0.0f, 0.9999f);
         pcs.tape_color_lp = (1.0f - a) * driven + a * pcs.tape_color_lp;
         wet = 0.65f * driven + 0.35f * pcs.tape_color_lp;
@@ -948,7 +966,7 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
       if (impl_->corrupt_enabled || impl_->knobs.corrupt_01 > 0.0001f ||
           CvOrZero(cv.corrupt_v, i) != 0.0f) {
         wet = internal::ProcessCorruptSample(
-            wet, corrupt_eff, impl_->state.corrupt_bank, impl_->state.corrupt_algorithm,
+            wet, corrupt_smoothed, impl_->state.corrupt_bank, impl_->state.corrupt_algorithm,
             &pcs.corrupt, &impl_->rng, impl_->runtime_sample_rate_hz);
       }
 

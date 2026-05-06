@@ -1,0 +1,112 @@
+========================================
+  corrupter_dsp_spectral_tests
+========================================
+[ RUN  ] T-SMK-Sine-Amplitude
+[ PASS ] T-SMK-Sine-Amplitude
+[ RUN  ] T-SMK-Fft-Sine-Bin
+[ PASS ] T-SMK-Fft-Sine-Bin
+[ RUN  ] T-SMK-Impulse-Flat
+[ PASS ] T-SMK-Impulse-Flat
+[ RUN  ] T-SMK-Fra-Identity
+[ PASS ] T-SMK-Fra-Identity
+[ RUN  ] T-SMK-IrFra-Identity
+[ PASS ] T-SMK-IrFra-Identity
+[ RUN  ] T-SMK-Thd-Sine-Pure
+  pure sine THD+N: 0.00219484 %
+[ PASS ] T-SMK-Thd-Sine-Pure
+[ RUN  ] T-SMK-Noise-Rms
+[ PASS ] T-SMK-Noise-Rms
+[ RUN  ] T-SMK-Click-Energy-Zero
+[ PASS ] T-SMK-Click-Energy-Zero
+[ RUN  ] T-SMK-Click-Energy-Step
+[ PASS ] T-SMK-Click-Energy-Step
+[ RUN  ] T-AA-Decimate-Low
+  [snapshot] aa_decimate_i010_1k  fund=-7.91495 dBFS  worst_alias=-22.7901 dBFS @ 6386.72 Hz
+[ PASS ] T-AA-Decimate-Low
+[ RUN  ] T-AA-Decimate-Mid
+  [snapshot] aa_decimate_i050_1k  fund=-15.1834 dBFS  worst_alias=-9.26552 dBFS @ 503.906 Hz
+[ PASS ] T-AA-Decimate-Mid
+[ RUN  ] T-AA-Decimate-High
+  [snapshot] aa_decimate_i090_1k  fund=-23.9315 dBFS  worst_alias=-6.75452 dBFS @ 164.062 Hz
+[ PASS ] T-AA-Decimate-High
+[ RUN  ] T-AA-Destroy-Soft
+  destroy soft  fund=0.968299  worst=-39.9076 @ 47027.3
+[ PASS ] T-AA-Destroy-Soft
+[ RUN  ] T-AA-Destroy-Hard
+  destroy hard  fund=-1.52139  worst=-18.9281 @ 47027.3
+  INFO: destroy-hard alias margin: 17.4067 dB (/Users/nealsanche/nosuch/corrupter/tests/spectral/test_aliasing.cpp:179)
+[ PASS ] T-AA-Destroy-Hard
+[ RUN  ] T-AA-DjFilter-Lp
+  dj-filter LP  fund=-0.549259  worst=-200 @ 0
+  INFO: dj-filter LP alias > 10 kHz: -78.4063 dBFS (/Users/nealsanche/nosuch/corrupter/tests/spectral/test_aliasing.cpp:210)
+[ PASS ] T-AA-DjFilter-Lp
+[ RUN  ] T-AA-Vinyl-Snapshot
+  [snapshot] aa_vinyl_i050_1k  fund=-11.0035 dBFS  worst_alias=-39.4087 dBFS @ 1101.56 Hz
+[ PASS ] T-AA-Vinyl-Snapshot
+[ RUN  ] T-FRA-Decimate-Idle
+  decimate-idle  max deviation: 0.296431 dB
+[ PASS ] T-FRA-Decimate-Idle
+[ RUN  ] T-FRA-DjFilter-Center
+  djfilter-center  flatness: 0.332941 dB (band: -1.04757 .. -0.71463)
+[ PASS ] T-FRA-DjFilter-Center
+[ RUN  ] T-FRA-DjFilter-LpMax
+  djfilter-lpmax  ref_db=9.57035  -3dB corner: 93.6235 Hz
+[ PASS ] T-FRA-DjFilter-LpMax
+[ RUN  ] T-FRA-DjFilter-HpMax
+  djfilter-hpmax  ref_db=3.50106  -3dB corner: 9603.92 Hz
+[ PASS ] T-FRA-DjFilter-HpMax
+[ RUN  ] T-FRA-Vinyl-Tone
+  vinyl-tone  midband range: 0.578303 .. 1.20389 dB
+[ PASS ] T-FRA-Vinyl-Tone
+[ RUN  ] T-THD-Destroy-Soft
+  destroy-soft THD+N: 8.91685 %
+[ PASS ] T-THD-Destroy-Soft
+[ RUN  ] T-THD-Destroy-Hard
+  destroy-hard THD+N: 40.9219 % (snapshot)
+[ PASS ] T-THD-Destroy-Hard
+[ RUN  ] T-THD-DjFilter
+  djfilter THD+N: 0.00427004 %
+[ PASS ] T-THD-DjFilter
+[ RUN  ] T-THD-Vinyl
+  vinyl THD+N (incl. surface noise): 4.20945 %
+[ PASS ] T-THD-Vinyl
+[ RUN  ] T-CLK-Corrupt-Sweep
+  corrupt-step max sample-to-sample delta: 0.509989
+  INFO: corrupt-step click delta: 0.509989 (/Users/nealsanche/nosuch/corrupter/tests/spectral/test_clicks.cpp:82)
+[ PASS ] T-CLK-Corrupt-Sweep
+[ RUN  ] T-CLK-Bend-Sweep
+  bend-step max delta: 0.0569825
+[ PASS ] T-CLK-Bend-Sweep
+[ RUN  ] T-CLK-Decimate-HoldStep
+  decimate-holdstep max delta: 0.6875
+[ PASS ] T-CLK-Decimate-HoldStep
+[ RUN  ] T-FRZ-Toggle
+  frz on max delta: 0  off max delta: 0.00654583
+[ PASS ] T-FRZ-Toggle
+[ RUN  ] T-XFADE-Tick
+  xfade-tick worst delta in steady freeze: 0.0306658
+  INFO: xfade-tick worst delta: 0.0306658 (/Users/nealsanche/nosuch/corrupter/tests/spectral/test_freeze_transitions.cpp:156)
+[ PASS ] T-XFADE-Tick
+[ RUN  ] T-DRP-Edges
+  drp-edges worst delta across 3 edges: 0
+  INFO: drp-edges worst delta: 0 (/Users/nealsanche/nosuch/corrupter/tests/spectral/test_freeze_transitions.cpp:201)
+[ PASS ] T-DRP-Edges
+[ RUN  ] T-SM-Corrupt-Step
+  sm-corrupt-step sideband/carrier: -10.5658 dB
+  INFO: sm-corrupt-step sideband/carrier: -10.5658 dB (/Users/nealsanche/nosuch/corrupter/tests/spectral/test_smoothing.cpp:112)
+[ PASS ] T-SM-Corrupt-Step
+[ RUN  ] T-SM-TapeDrive-Step
+  sm-tape-drive-step sideband/carrier: 25.3202 dB
+  INFO: sm-tape-drive-step sideband/carrier: 25.3202 dB (/Users/nealsanche/nosuch/corrupter/tests/spectral/test_smoothing.cpp:169)
+[ PASS ] T-SM-TapeDrive-Step
+[ RUN  ] T-SM-Pitch-Step
+  sm-pitch-step worst delta: 0
+  INFO: sm-pitch-step worst delta: 0 (/Users/nealsanche/nosuch/corrupter/tests/spectral/test_smoothing.cpp:217)
+[ PASS ] T-SM-Pitch-Step
+[ RUN  ] T-SM-Destroy-Crossover
+  sm-destroy-crossover worst delta: 0.199449 at sample 49009
+  INFO: sm-destroy-crossover worst delta: 0.199449 (/Users/nealsanche/nosuch/corrupter/tests/spectral/test_smoothing.cpp:264)
+[ PASS ] T-SM-Destroy-Crossover
+----------------------------------------
+  passed: 35  failed: 0  skipped: 0  (total: 35)
+----------------------------------------

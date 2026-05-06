@@ -90,14 +90,72 @@ float ProcessCorruptSample(float x, float intensity, CorruptBank bank, CorruptAl
 
         return x * state->dropout_gain;
       }
-      if (intensity < 0.5f) {
-        const float drive = 1.0f + intensity * 10.0f;
-        return std::tanh(x * drive);
+      // Destroy: 2x oversampled tanh saturator (i<0.5) and hard clipper
+      // (i>=0.5). 9-tap linear-phase half-band FIR for both upsample and
+      // downsample image rejection. Coefficients sum to 1; the upsample
+      // odd-tap pair carries a 2x gain correction for zero-stuffing so the
+      // nonlinearity sees the full input amplitude.
+      //
+      //   h = [0, -0.05, 0, 0.30, 0.5, 0.30, 0, -0.05, 0]
+      //
+      // Net latency: ~2 samples at 96 kHz (neglected).
+
+      // Shift input history (newest at [0])
+      state->destroy_in[3] = state->destroy_in[2];
+      state->destroy_in[2] = state->destroy_in[1];
+      state->destroy_in[1] = state->destroy_in[0];
+      state->destroy_in[0] = x;
+
+      // Polyphase upsample (gain-corrected ×2)
+      const float u_even = state->destroy_in[2];
+      const float u_odd  = -0.10f * state->destroy_in[0]
+                         +  0.60f * state->destroy_in[1]
+                         +  0.60f * state->destroy_in[2]
+                         -  0.10f * state->destroy_in[3];
+
+      // Nonlinearity at 2x rate. Soft (tanh) and hard (clip) paths are
+      // crossfaded with a smoothstep over intensity ∈ [0.45, 0.55] to
+      // remove the derivative kink at i=0.5. Outside that band only one
+      // path runs; inside both run and blend.
+      const float drive_soft = 1.0f + intensity * 10.0f;
+      const float t_hard = (intensity - 0.5f) * 2.0f;
+      const float drive_hard = 6.0f + 24.0f * t_hard;
+      const float clip_hard = 1.0f - 0.85f * t_hard;
+
+      float w_even, w_odd;
+      if (intensity <= 0.45f) {
+        w_even = std::tanh(u_even * drive_soft);
+        w_odd  = std::tanh(u_odd  * drive_soft);
+      } else if (intensity >= 0.55f) {
+        w_even = Clamp(u_even * drive_hard, -clip_hard, clip_hard);
+        w_odd  = Clamp(u_odd  * drive_hard, -clip_hard, clip_hard);
+      } else {
+        const float u = (intensity - 0.45f) * 10.0f;  // 0..1
+        const float blend = u * u * (3.0f - 2.0f * u);
+        const float soft_e = std::tanh(u_even * drive_soft);
+        const float soft_o = std::tanh(u_odd  * drive_soft);
+        const float hard_e = Clamp(u_even * drive_hard, -clip_hard, clip_hard);
+        const float hard_o = Clamp(u_odd  * drive_hard, -clip_hard, clip_hard);
+        w_even = (1.0f - blend) * soft_e + blend * hard_e;
+        w_odd  = (1.0f - blend) * soft_o + blend * hard_o;
       }
-      const float t = (intensity - 0.5f) * 2.0f;
-      const float drive = 6.0f + 24.0f * t;
-      const float clip = 1.0f - 0.85f * t;
-      return Clamp(x * drive, -clip, clip);
+
+      // Shift upsample history right by 2, then push current pair.
+      state->destroy_us[7] = state->destroy_us[5];
+      state->destroy_us[6] = state->destroy_us[4];
+      state->destroy_us[5] = state->destroy_us[3];
+      state->destroy_us[4] = state->destroy_us[2];
+      state->destroy_us[3] = state->destroy_us[1];
+      state->destroy_us[2] = state->destroy_us[0];
+      state->destroy_us[1] = w_even;  // w[2k]
+      state->destroy_us[0] = w_odd;   // w[2k+1]
+
+      // Polyphase downsample (no gain correction; coefficients sum to 1)
+      return -0.05f * state->destroy_us[1]
+           +  0.30f * state->destroy_us[3]
+           +  0.50f * state->destroy_us[4]
+           +  0.30f * state->destroy_us[5]
+           -  0.05f * state->destroy_us[7];
     }
 
     case CorruptBank::kExpanded: {
