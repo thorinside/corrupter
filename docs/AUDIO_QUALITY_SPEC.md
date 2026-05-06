@@ -1,8 +1,9 @@
 # Corrupter Audio Quality Specification
 
 **Status:** Phase 2 complete (2026-05-05). Plateau reached.
-35/35 spectral tests pass. See `tests/spectral/runs/iter-2*/REPORT.md`
-for per-iteration deltas. Phase 1 baseline at commit `251a7c6`.
+36/36 spectral tests pass (35 spectral gates + 1 golden-hash regression
+sentinel). See `tests/spectral/runs/iter-2*/REPORT.md` for per-iteration
+deltas. Phase 1 baseline at commit `251a7c6`.
 
 This spec defines per-algorithm audio-quality gates for the Corrupter DSP
 library. The harness lives in `tests/spectral/` and is exercised by the
@@ -114,6 +115,12 @@ character. Surface noise dominates THD+N measurements.
 | T-FRZ-Toggle | sample-to-sample delta at on/off | <0.01 | gated | Currently on=0, off=0.0065 |
 | T-XFADE-Tick | delta during steady freeze | snapshot | gate after baseline |
 | T-DRP-Edges | delta at dropout edges | <0.01 | gated | Currently 0 (cosine ramp) |
+
+### Pipeline-wide regression sentinel
+
+| Test ID | Metric | Target | Status | Notes |
+|---|---|---|---|---|
+| T-GOLDEN-DspHash | SHA-256 of full stereo float output across a 2 s scenario exercising every algorithm + smoother + freeze/bend gate | exact match | gated | Host-only (macOS / Linux, IEEE-754 little-endian). Regenerate with `CORRUPTER_GOLDEN_REGEN=1` after intentional DSP changes |
 
 ## By-design vs accidental
 

@@ -9,6 +9,7 @@ add_executable(corrupter_dsp_spectral_tests
   test_clicks.cpp
   test_freeze_transitions.cpp
   test_smoothing.cpp
+  test_golden_hash.cpp
 )
 
 target_link_libraries(corrupter_dsp_spectral_tests

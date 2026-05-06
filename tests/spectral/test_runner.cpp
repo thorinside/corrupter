@@ -16,6 +16,7 @@ int main(int argc, char** argv) {
   corrupter_spec::RegisterClickTests(tests);
   corrupter_spec::RegisterFreezeTests(tests);
   corrupter_spec::RegisterSmoothingTests(tests);
+  corrupter_spec::RegisterGoldenHashTests(tests);
 
   std::string filter;
   for (int i = 1; i < argc; ++i) {

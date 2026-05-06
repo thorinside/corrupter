@@ -19,6 +19,7 @@ void RegisterThdTests(std::vector<TestCase>& out);
 void RegisterClickTests(std::vector<TestCase>& out);
 void RegisterFreezeTests(std::vector<TestCase>& out);
 void RegisterSmoothingTests(std::vector<TestCase>& out);
+void RegisterGoldenHashTests(std::vector<TestCase>& out);
 
 }  // namespace corrupter_spec
 
