@@ -152,8 +152,8 @@ bool TestXfadeTick() {
     if (d > worst) worst = d;
   }
   std::cerr << "  xfade-tick worst delta in steady freeze: " << worst << "\n";
-  // Snapshot only — by-design: tick crossfade has finite duration.
-  CORRUPTER_SPEC_INFO("xfade-tick worst delta: " << worst);
+  CORRUPTER_SPEC_REQUIRE(worst < 0.012f,
+                         "xfade-tick steady-freeze delta below 0.012");
   return true;
 }
 

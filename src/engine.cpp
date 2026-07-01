@@ -62,7 +62,7 @@ struct PlaybackChannelState {
   internal::CorruptChannelState corrupt;
 
   // Crossfade state for tick transitions
-  static constexpr uint32_t kXfadeSamples = 16;
+  static constexpr uint32_t kXfadeSamples = 256;
   uint32_t xfade_remaining = 0;      // samples left in crossfade (0 = inactive)
   double xfade_read_index = 0.0;     // old segment read position at tick
   float xfade_rate = 1.0f;           // old segment playback rate
@@ -275,6 +275,7 @@ struct Engine::Impl {
   bool corrupt_enabled = false;
   float freeze_write_fade = 1.0f;  // 1.0 = writing, 0.0 = frozen
   OnePole corrupt_smoother;        // ~5 ms slew on corrupt-CV; kills zipper
+  OnePole corrupt_wet_smoother;    // fades corrupt DSP in/out without cold-start clicks
 
   void ResetPlayback() {
     segment = {};
@@ -290,6 +291,8 @@ struct Engine::Impl {
     freeze_write_fade = 1.0f;
     corrupt_smoother.SetTimeMs(10.0f, runtime_sample_rate_hz);
     corrupt_smoother.Reset(internal::Clamp01(knobs.corrupt_01));
+    corrupt_wet_smoother.SetTimeMs(10.0f, runtime_sample_rate_hz);
+    corrupt_wet_smoother.Reset((corrupt_enabled || knobs.corrupt_01 > 0.0001f) ? 1.0f : 0.0f);
   }
 
   float EffectiveUnipolar(float knob, float cv_volts, float atten_01) const {
@@ -963,11 +966,17 @@ void Engine::process(const AudioBlock& audio, const CvInputs& cv,
         wet = 0.65f * driven + 0.35f * pcs.tape_color_lp;
       }
 
-      if (impl_->corrupt_enabled || impl_->knobs.corrupt_01 > 0.0001f ||
-          CvOrZero(cv.corrupt_v, i) != 0.0f) {
-        wet = internal::ProcessCorruptSample(
+      const bool corrupt_target_active =
+          impl_->corrupt_enabled || impl_->knobs.corrupt_01 > 0.0001f ||
+          CvOrZero(cv.corrupt_v, i) != 0.0f;
+      const float corrupt_wet = impl_->corrupt_wet_smoother.Tick(
+          corrupt_target_active ? 1.0f : 0.0f);
+      if (corrupt_target_active || corrupt_wet > 1e-4f) {
+        const float uncorrupted = wet;
+        const float corrupted = internal::ProcessCorruptSample(
             wet, corrupt_smoothed, impl_->state.corrupt_bank, impl_->state.corrupt_algorithm,
             &pcs.corrupt, &impl_->rng, impl_->runtime_sample_rate_hz);
+        wet = uncorrupted + (corrupted - uncorrupted) * internal::Clamp01(corrupt_wet);
       }
 
       pcs.phase += static_cast<double>(smooth_rate);

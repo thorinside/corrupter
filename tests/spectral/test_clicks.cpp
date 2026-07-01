@@ -78,8 +78,10 @@ bool TestClkCorruptSweep() {
   const float click = MaxClickInWindow(output.data(), total, step_at, 256);
   std::cerr << "  corrupt-step max sample-to-sample delta: " << click << "\n";
 
-  // Snapshot for now; tighten gate after baseline. Phase 2A target.
-  CORRUPTER_SPEC_INFO("corrupt-step click delta: " << click);
+  // Corrupt DSP fades in separately from intensity, so turning the control up
+  // cannot expose cold filter state as a full-scale click.
+  CORRUPTER_SPEC_REQUIRE(click < 0.06f,
+                         "corrupt-step click delta below 0.06");
   return true;
 }
 
@@ -121,13 +123,14 @@ bool TestClkBendSweep() {
 
   const float click = MaxClickInWindow(output.data(), total, pre, 512);
   std::cerr << "  bend-step max delta: " << click << "\n";
-  return true;  // snapshot
+  CORRUPTER_SPEC_REQUIRE(click < 0.08f,
+                         "bend-step click delta below 0.08");
+  return true;
 }
 
-// Decimate hold-length jump click. Tests ProcessCorruptSample directly with
-// intensity stepping mid-stream. Hold counter resets only when it expires;
-// when intensity jumps, the *next* hold becomes the new length. The click can
-// happen because the new "held" sample is captured at an unrelated phase.
+// Decimate hold-length edge. This tests ProcessCorruptSample directly, outside
+// the engine-level corrupt smoother. The discontinuity is sample-and-hold
+// character, not a transition bug, so it stays a snapshot.
 bool TestClkDecimateHoldStep() {
   corrupter::internal::CorruptChannelState state{};
   corrupter::internal::XorShift32 rng;
@@ -155,8 +158,6 @@ bool TestClkDecimateHoldStep() {
 
   const float click = MaxClickInWindow(output.data(), kTotal, kPre, 256);
   std::cerr << "  decimate-holdstep max delta: " << click << "\n";
-  // Decimate aliasing is by-design but the hold-length jump click is a
-  // mechanical defect. Snapshot for now; gate after baseline.
   return true;
 }
 
