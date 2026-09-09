@@ -1,0 +1,13 @@
+{
+    "MetaModuleBrandName": "Corrupter",
+    "MetaModulePluginMaintainer": "Neal Sanche (Thorinside)",
+    "MetaModulePluginMaintainerEmail": "thorinside@gmail.com",
+    "MetaModulePluginMaintainerUrl": "https://github.com/thorinside/corrupter",
+    "MetaModuleDescription": "Clocked, corrupting stutter/repeat effect. Also shipped as part of the NoSuchDevice plugin.",
+    "MetaModuleIncludedModules": [
+        {
+            "slug": "Corrupter",
+            "name": "Corrupter"
+        }
+    ]
+}
